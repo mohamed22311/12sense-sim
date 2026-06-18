@@ -15,7 +15,11 @@ export function DecoWorker({ def }: Props) {
   const groupRef    = useRef<THREE.Group>(null!);
   const leftArmRef  = useRef<THREE.Group>(null!);
   const rightArmRef = useRef<THREE.Group>(null!);
+  const leftLegRef  = useRef<THREE.Group>(null!);
+  const rightLegRef = useRef<THREE.Group>(null!);
   const headRef     = useRef<THREE.Group>(null!);
+  const walkIndex   = useRef(0);
+  const walkT       = useRef(Math.random()); // stagger start positions
 
   const idx    = def.skinIndex % SKIN_TONES.length;
   const skin   = SKIN_TONES[idx];
@@ -24,11 +28,47 @@ export function DecoWorker({ def }: Props) {
   const helmet = HELMET_COLORS[idx];
   const role   = def.role ?? 'idle';
 
-  useFrame(() => {
+  const walkPath: THREE.Vector3[] = (def.walkPath ?? []).map(
+    ([x, y, z]) => new THREE.Vector3(x, y, z)
+  );
+
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
     const t  = performance.now() * 0.001;
     const ph = def.skinIndex * 1.3;
+    const isWalking = walkPath.length > 1;
 
+    // ── Walking mode ───────────────────────────────────────────────────
+    if (isWalking) {
+      const speed = def.walkSpeed ?? 0.28;
+      walkT.current += delta * speed;
+      if (walkT.current >= 1) {
+        walkT.current -= 1;
+        walkIndex.current = (walkIndex.current + 1) % walkPath.length;
+      }
+      const from = walkPath[walkIndex.current];
+      const to   = walkPath[(walkIndex.current + 1) % walkPath.length];
+      const pos  = from.clone().lerp(to, walkT.current);
+      groupRef.current.position.copy(pos);
+
+      const dir = to.clone().sub(from);
+      if (dir.length() > 0.01) {
+        const angle = Math.atan2(dir.x, dir.z);
+        groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, angle, 0.14);
+      }
+
+      const swing = Math.sin(t * 3.8);
+      if (leftLegRef.current)  leftLegRef.current.rotation.x  =  swing * 0.44;
+      if (rightLegRef.current) rightLegRef.current.rotation.x = -swing * 0.44;
+      if (leftArmRef.current)  leftArmRef.current.rotation.x  = -swing * 0.28;
+      if (rightArmRef.current) rightArmRef.current.rotation.x =  swing * 0.28;
+
+      // Small vertical bob while walking
+      groupRef.current.position.y = groupRef.current.position.y + Math.abs(Math.sin(t * 3.8)) * 0.018;
+      return;
+    }
+
+    // ── Stationary mode ────────────────────────────────────────────────
     groupRef.current.position.y = def.position[1] + Math.sin(t * 1.6 + ph) * 0.005;
 
     if (headRef.current) {
@@ -39,7 +79,6 @@ export function DecoWorker({ def }: Props) {
 
     switch (role) {
       case 'panel': {
-        // Arms alternate pressing controls
         const la = Math.sin(t * 1.8 + ph);
         const ra = Math.sin(t * 1.8 + ph + Math.PI * 0.7);
         leftArmRef.current.rotation.x  = -0.55 - Math.max(0, la) * 0.45;
@@ -49,7 +88,6 @@ export function DecoWorker({ def }: Props) {
         break;
       }
       case 'carry': {
-        // Arms forward, carrying a box — slight body sway
         const sway = Math.sin(t * 0.55 + ph) * 0.04;
         leftArmRef.current.rotation.x  = -1.05 + sway;
         rightArmRef.current.rotation.x = -1.05 + sway;
@@ -58,7 +96,6 @@ export function DecoWorker({ def }: Props) {
         break;
       }
       case 'wrench': {
-        // Right arm cycles like tightening a bolt
         const stroke = Math.sin(t * 2.2 + ph);
         rightArmRef.current.rotation.x = -0.55 - stroke * 0.38;
         rightArmRef.current.rotation.z = -0.20 - Math.max(0, stroke) * 0.18;
@@ -67,7 +104,6 @@ export function DecoWorker({ def }: Props) {
         break;
       }
       case 'inspect': {
-        // Lean down to inspect, slow rise-and-dip
         const lean = Math.abs(Math.sin(t * 0.35 + ph)) * 0.32;
         groupRef.current.rotation.x = lean;
         leftArmRef.current.rotation.x  = -0.6 - lean * 0.8;
@@ -77,7 +113,6 @@ export function DecoWorker({ def }: Props) {
         break;
       }
       default: {
-        // Gentle idle sway
         leftArmRef.current.rotation.x  = -0.38 + Math.sin(t * 0.75 + ph) * 0.09;
         rightArmRef.current.rotation.x = -0.38 + Math.sin(t * 0.75 + ph + 1.1) * 0.09;
         leftArmRef.current.rotation.z  =  0.15;
@@ -89,20 +124,25 @@ export function DecoWorker({ def }: Props) {
 
   return (
     <group ref={groupRef} position={def.position} rotation={[0, def.facing, 0]}>
-      {/* Legs */}
-      <RoundedBox args={[0.11, 0.44, 0.11]} radius={0.03} position={[-0.08, 0.22, 0]} castShadow>
-        <meshStandardMaterial color={pants} roughness={0.9} metalness={0} />
-      </RoundedBox>
-      <RoundedBox args={[0.11, 0.44, 0.11]} radius={0.03} position={[ 0.08, 0.22, 0]} castShadow>
-        <meshStandardMaterial color={pants} roughness={0.9} metalness={0} />
-      </RoundedBox>
 
-      {/* Torso */}
+      {/* ── Legs ────────────────────────────────────────────────────────── */}
+      <group ref={leftLegRef} position={[-0.08, 0.22, 0]}>
+        <RoundedBox args={[0.11, 0.44, 0.11]} radius={0.03} position={[0, 0, 0]} castShadow>
+          <meshStandardMaterial color={pants} roughness={0.9} metalness={0} />
+        </RoundedBox>
+      </group>
+      <group ref={rightLegRef} position={[0.08, 0.22, 0]}>
+        <RoundedBox args={[0.11, 0.44, 0.11]} radius={0.03} position={[0, 0, 0]} castShadow>
+          <meshStandardMaterial color={pants} roughness={0.9} metalness={0} />
+        </RoundedBox>
+      </group>
+
+      {/* ── Torso ───────────────────────────────────────────────────────── */}
       <RoundedBox args={[0.32, 0.42, 0.18]} radius={0.05} position={[0, 0.66, 0]} castShadow>
         <meshStandardMaterial color={shirt} roughness={0.88} metalness={0} />
       </RoundedBox>
 
-      {/* Hi-vis vest stripes */}
+      {/* Hi-vis stripes */}
       <mesh position={[0, 0.68, 0.092]}>
         <planeGeometry args={[0.30, 0.06]} />
         <meshStandardMaterial color="#f0c020" emissive="#f0c020" emissiveIntensity={0.3} roughness={0.8} side={2} />
@@ -112,7 +152,7 @@ export function DecoWorker({ def }: Props) {
         <meshStandardMaterial color="#f0c020" emissive="#f0c020" emissiveIntensity={0.3} roughness={0.8} side={2} />
       </mesh>
 
-      {/* Head + helmet */}
+      {/* ── Head + helmet ────────────────────────────────────────────────── */}
       <group ref={headRef} position={[0, 1.06, 0]}>
         <mesh castShadow>
           <sphereGeometry args={[0.13, 12, 10]} />
@@ -128,7 +168,7 @@ export function DecoWorker({ def }: Props) {
         </mesh>
       </group>
 
-      {/* Left arm — pivot at shoulder */}
+      {/* ── Left arm (shoulder pivot) ────────────────────────────────────── */}
       <group ref={leftArmRef} position={[-0.20, 0.78, 0]} rotation={[-0.55, 0, 0.14]}>
         <RoundedBox args={[0.095, 0.38, 0.095]} radius={0.03} position={[0, -0.19, 0]} castShadow>
           <meshStandardMaterial color={shirt} roughness={0.88} metalness={0} />
@@ -139,7 +179,7 @@ export function DecoWorker({ def }: Props) {
         </mesh>
       </group>
 
-      {/* Right arm — pivot at shoulder */}
+      {/* ── Right arm (shoulder pivot) ───────────────────────────────────── */}
       <group ref={rightArmRef} position={[0.20, 0.78, 0]} rotation={[-0.55, 0, -0.14]}>
         <RoundedBox args={[0.095, 0.38, 0.095]} radius={0.03} position={[0, -0.19, 0]} castShadow>
           <meshStandardMaterial color={shirt} roughness={0.88} metalness={0} />
@@ -148,7 +188,6 @@ export function DecoWorker({ def }: Props) {
           <sphereGeometry args={[0.055, 8, 8]} />
           <meshStandardMaterial color={skin} roughness={0.85} />
         </mesh>
-        {/* Wrench prop */}
         {role === 'wrench' && (
           <group position={[0, -0.52, 0.06]}>
             <mesh>
@@ -163,21 +202,30 @@ export function DecoWorker({ def }: Props) {
         )}
       </group>
 
-      {/* Carry box — held in front when role=carry */}
-      {role === 'carry' && (
+      {/* ── Carry box ────────────────────────────────────────────────────── */}
+      {role === 'carry' && !walkPath.length && (
         <mesh position={[0, 0.38, 0.22]} castShadow>
           <boxGeometry args={[0.20, 0.14, 0.16]} />
           <meshStandardMaterial color="#7a6040" roughness={0.9} metalness={0} />
         </mesh>
       )}
 
-      {/* Clipboard — held by left hand when role=inspect */}
+      {/* Walking carry box (held at chest height) */}
+      {role === 'carry' && walkPath.length > 0 && (
+        <mesh position={[0, 0.65, 0.20]} castShadow>
+          <boxGeometry args={[0.22, 0.16, 0.18]} />
+          <meshStandardMaterial color="#c8a050" roughness={0.9} metalness={0} />
+        </mesh>
+      )}
+
+      {/* ── Clipboard (inspect role) ─────────────────────────────────────── */}
       {role === 'inspect' && (
         <mesh position={[-0.15, 0.50, 0.18]} rotation={[-0.5, 0, 0.1]} castShadow>
           <boxGeometry args={[0.12, 0.16, 0.012]} />
           <meshStandardMaterial color="#e8e0c0" roughness={0.95} metalness={0} />
         </mesh>
       )}
+
     </group>
   );
 }

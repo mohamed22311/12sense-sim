@@ -27,6 +27,11 @@ export function Machine({ def }: Props) {
   const fireMat2    = useRef<THREE.MeshStandardMaterial>(null!);
   const fireTimers  = useRef([0, 0.4, 0.8]);
 
+  // Fan refs (chiller) and piston refs (panel)
+  const fanRef0     = useRef<THREE.Group>(null!);
+  const fanRef1     = useRef<THREE.Group>(null!);
+  const pistonRef   = useRef<THREE.Mesh>(null!);
+
   // Electrical spark refs
   const sparkRef0   = useRef<THREE.Mesh>(null!);
   const sparkRef1   = useRef<THREE.Mesh>(null!);
@@ -73,6 +78,18 @@ export function Machine({ def }: Props) {
       needleRef.current.rotation.z = isFailing
         ? needleRef.current.rotation.z + delta * 4
         : Math.sin(t * 0.5) * 0.3 - 0.1;
+    }
+
+    // Rotating fans (chiller)
+    if (def.type === 'chiller') {
+      const fanSpeed = isFailing ? 18 : 8;
+      if (fanRef0.current) fanRef0.current.rotation.y += delta * fanSpeed;
+      if (fanRef1.current) fanRef1.current.rotation.y += delta * fanSpeed * 0.92;
+    }
+
+    // Piston arm (panel)
+    if (def.type === 'panel' && pistonRef.current) {
+      pistonRef.current.position.y = 1.15 + Math.abs(Math.sin(t * 1.4)) * 0.55;
     }
 
     // Mist puffs (chiller only)
@@ -359,6 +376,32 @@ export function Machine({ def }: Props) {
           </mesh>
         ))}
 
+        {/* Rotating fan blades on top cooling unit */}
+        <group ref={fanRef0} position={[-0.28, 2.82, 0]}>
+          {[0, 1, 2, 3].map((i) => (
+            <mesh key={i} rotation={[0, (i / 4) * Math.PI * 2, 0]}>
+              <boxGeometry args={[0.38, 0.018, 0.07]} />
+              <meshStandardMaterial color="#3a5060" roughness={0.7} metalness={0.35} />
+            </mesh>
+          ))}
+          <mesh>
+            <cylinderGeometry args={[0.04, 0.04, 0.05, 10]} />
+            <meshStandardMaterial color="#6a8090" roughness={0.5} metalness={0.6} />
+          </mesh>
+        </group>
+        <group ref={fanRef1} position={[0.28, 2.82, 0]}>
+          {[0, 1, 2, 3].map((i) => (
+            <mesh key={i} rotation={[0, (i / 4) * Math.PI * 2, 0]}>
+              <boxGeometry args={[0.38, 0.018, 0.07]} />
+              <meshStandardMaterial color="#3a5060" roughness={0.7} metalness={0.35} />
+            </mesh>
+          ))}
+          <mesh>
+            <cylinderGeometry args={[0.04, 0.04, 0.05, 10]} />
+            <meshStandardMaterial color="#6a8090" roughness={0.5} metalness={0.6} />
+          </mesh>
+        </group>
+
         {/* Pipes */}
         {[-0.3, 0.3].map((x, i) => (
           <mesh key={i} position={[x, 2.95, 0]} castShadow>
@@ -439,6 +482,17 @@ export function Machine({ def }: Props) {
           </RoundedBox>
         );
       })}
+
+      {/* Piston arm that moves up and down */}
+      <mesh ref={pistonRef} position={[0, 1.15, -0.28]} castShadow>
+        <cylinderGeometry args={[0.04, 0.04, 0.55, 10]} />
+        <meshStandardMaterial color="#7a9aaa" roughness={0.5} metalness={0.6} />
+      </mesh>
+      {/* Piston head */}
+      <mesh position={[0, 0.88, -0.28]}>
+        <cylinderGeometry args={[0.08, 0.08, 0.10, 10]} />
+        <meshStandardMaterial color="#5a7a8a" roughness={0.5} metalness={0.7} />
+      </mesh>
 
       {/* Display screen */}
       <mesh position={[0, 1.85, 0.256]}>

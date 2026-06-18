@@ -12,6 +12,7 @@ import { AdminStation } from './AdminStation';
 import { AlertOrb } from './AlertOrb';
 import { DecoWorker } from './DecoWorker';
 import { Stairs } from './Stairs';
+import { ConveyorBelt } from './ConveyorBelt';
 import { WORKER_DEFS, MACHINE_DEFS, WALL_MACHINE_DEFS, DECO_WORKER_DEFS, CAMERA_OVERVIEW, CAMERA_FOCUS } from './sceneDefs';
 import { watchFocusData } from './workerFocusRef';
 
@@ -276,6 +277,10 @@ function SceneContents() {
       <Ceiling />
       <Stairs />
       <FactoryProps />
+      {/* Conveyor belt with animated packages + overhead scanner */}
+      <ConveyorBelt position={[3.0, 0, -2.5]} length={4.2} />
+      {/* Second shorter conveyor near back-left area */}
+      <ConveyorBelt position={[-2.0, 0, -12.8]} rotationY={Math.PI / 2} length={2.8} />
       <AdminStation />
       {/* Simulation workers (with smartwatches + alert routing) */}
       {WORKER_DEFS.map((def) => (

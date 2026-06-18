@@ -46,6 +46,8 @@ export interface DecoWorkerDef {
   facing: number;
   skinIndex: number;
   role?: 'panel' | 'carry' | 'wrench' | 'inspect' | 'idle';
+  walkPath?: [number, number, number][];
+  walkSpeed?: number;
 }
 
 // ─── Simulation workers — 3 static around reactor, 2 patrolling corridors ────
@@ -137,11 +139,38 @@ export const DECO_WORKER_DEFS: DecoWorkerDef[] = [
   { id: 'dw-BK-L2', position: [-3.4, 0, -12.5], facing: Math.PI, skinIndex: 0, role: 'wrench'  },
   { id: 'dw-BK-R1', position: [ 2.5, 0, -12.8], facing: Math.PI, skinIndex: 1, role: 'panel'   },
   { id: 'dw-BK-R2', position: [ 3.4, 0, -12.5], facing: Math.PI, skinIndex: 4, role: 'carry'   },
-  // ── Stair workers — fixed on tread surfaces ───────────────────────────
-  { id: 'dw-S1', position: [-7.1, 1.0, -1.1],  facing: Math.PI, skinIndex: 3, role: 'idle' },
-  { id: 'dw-S2', position: [-7.1, 2.5, -2.75], facing: 0.0,     skinIndex: 1, role: 'idle' },
+  // ── Stair walkers — walk up stairs onto mezzanine and back down ────────
+  // Tread tops: step i → y=(i+1)*0.5, z=-0.5-i*0.55
+  {
+    id: 'dw-S1', position: [-7.1, 0, -0.5], facing: Math.PI, skinIndex: 3, role: 'carry',
+    walkSpeed: 0.30,
+    walkPath: [
+      [-7.1, 0.0,  -0.5],  [-7.1, 0.5,  -1.05], [-7.1, 1.0,  -1.60],
+      [-7.1, 1.5,  -2.15], [-7.1, 2.0,  -2.70], [-7.1, 2.5,  -3.25],
+      [-7.1, 3.0,  -3.80], [-7.1, 3.5,  -4.35], [-6.5, 3.56, -5.5],
+      [-6.2, 3.56, -8.0],  [-6.5, 3.56, -5.5],  [-7.1, 3.5,  -4.35],
+      [-7.1, 3.0,  -3.80], [-7.1, 2.5,  -3.25], [-7.1, 2.0,  -2.70],
+      [-7.1, 1.5,  -2.15], [-7.1, 1.0,  -1.60], [-7.1, 0.5,  -1.05],
+    ] as [number, number, number][],
+  },
+  {
+    id: 'dw-S2', position: [-7.1, 2.5, -3.25], facing: 0.0, skinIndex: 1, role: 'idle',
+    walkSpeed: 0.24,
+    walkPath: [
+      [-7.1, 3.5,  -4.35], [-6.5, 3.56, -5.5],  [-6.2, 3.56, -9.5],
+      [-6.5, 3.56, -5.5],  [-7.1, 3.5,  -4.35], [-7.1, 3.0,  -3.80],
+      [-7.1, 2.5,  -3.25], [-7.1, 2.0,  -2.70], [-7.1, 1.5,  -2.15],
+      [-7.1, 1.0,  -1.60], [-7.1, 0.5,  -1.05], [-7.1, 0.0,  -0.5],
+      [-7.1, 0.5,  -1.05], [-7.1, 1.0,  -1.60], [-7.1, 1.5,  -2.15],
+      [-7.1, 2.0,  -2.70], [-7.1, 2.5,  -3.25], [-7.1, 3.0,  -3.80],
+    ] as [number, number, number][],
+  },
   // ── Mezzanine workers (y=3.56 = top of mezzanine floor) ───────────────
   { id: 'dw-M1', position: [-5.8, 3.56, -6.5],  facing: -Math.PI / 2, skinIndex: 4, role: 'panel'   },
   { id: 'dw-M2', position: [-5.8, 3.56, -11.5], facing: -Math.PI / 2, skinIndex: 2, role: 'wrench'  },
   { id: 'dw-M3', position: [-6.5, 3.56, -9.0],  facing:  0,           skinIndex: 0, role: 'carry'   },
+  // ── Conveyor belt workers — picking/placing items (belt at [3.0,0,-2.5]) ─
+  { id: 'dw-CV1', position: [2.1, 0, -1.8],  facing:  Math.PI / 2, skinIndex: 2, role: 'carry'  },
+  { id: 'dw-CV2', position: [2.1, 0, -3.5],  facing:  Math.PI / 2, skinIndex: 0, role: 'panel'  },
+  { id: 'dw-CV3', position: [3.9, 0, -2.6],  facing: -Math.PI / 2, skinIndex: 4, role: 'carry'  },
 ];

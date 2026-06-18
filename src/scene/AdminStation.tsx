@@ -176,7 +176,6 @@ export function AdminStation() {
     canvasRef.current = canvas;
     texRef.current = tex;
     if (screenMatRef.current) {
-      screenMatRef.current.map = tex;
       screenMatRef.current.emissiveMap = tex;
       screenMatRef.current.needsUpdate = true;
     }
@@ -193,10 +192,10 @@ export function AdminStation() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alerts, workers]);
 
-  // Smooth brightness transition — no oscillation
+  // Smooth brightness — emissiveIntensity=1.0 maps canvas colors 1:1 (no clipping)
   useFrame(() => {
     if (!screenMatRef.current) return;
-    const want = phase === 'alerting' ? 3.2 : phase === 'acknowledged' ? 3.0 : 2.5;
+    const want = phase === 'alerting' ? 1.4 : phase === 'acknowledged' ? 1.2 : 1.0;
     screenMatRef.current.emissiveIntensity = THREE.MathUtils.lerp(
       screenMatRef.current.emissiveIntensity, want, 0.06,
     );
@@ -226,14 +225,14 @@ export function AdminStation() {
         <meshStandardMaterial color={C.monitorFrame} roughness={0.85} metalness={0.1} />
       </RoundedBox>
 
-      {/* Monitor screen */}
+      {/* Monitor screen — color black so diffuse is 0, purely self-illuminated via emissiveMap */}
       <mesh ref={screenRef} position={[0, 1.82, -0.065]}>
         <planeGeometry args={[2.08, 1.30]} />
         <meshStandardMaterial
           ref={screenMatRef}
-          color="#ffffff"
+          color="#000000"
           emissive="#ffffff"
-          emissiveIntensity={2.5}
+          emissiveIntensity={1.0}
           roughness={0.05}
           metalness={0}
           toneMapped={false}
