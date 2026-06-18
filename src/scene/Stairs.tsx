@@ -57,29 +57,39 @@ export function Stairs() {
         <meshStandardMaterial color="#3a4a5a" roughness={0.6} metalness={0.5} />
       </mesh>
 
-      {/* ── Mezzanine platform floor ───────────────────────────────────── */}
-      <mesh position={[-6.5, 3.5, -9.0]} receiveShadow>
-        <boxGeometry args={[3.0, 0.12, 9.5]} />
+      {/* ── Mezzanine platform floor (4 units wide, inner edge at x=-4) ── */}
+      <mesh position={[-6.0, 3.5, -9.0]} receiveShadow>
+        <boxGeometry args={[4.0, 0.12, 9.5]} />
         <meshStandardMaterial color="#8a9aaa" roughness={0.85} metalness={0.1} />
       </mesh>
+      {/* Mezzanine floor edge highlight strip */}
+      <mesh position={[-4.03, 3.57, -9.0]}>
+        <boxGeometry args={[0.04, 0.02, 9.5]} />
+        <meshStandardMaterial color="#f0c020" emissive="#f0c020" emissiveIntensity={0.4} roughness={0.8} />
+      </mesh>
 
-      {/* ── Mezzanine safety railing (inner edge facing factory floor) ─── */}
+      {/* ── Mezzanine safety railing (inner edge at x=-4.05) ─────────── */}
       {/* Horizontal top rail */}
-      <mesh position={[-5.05, 4.45, -9.0]}>
+      <mesh position={[-4.05, 4.45, -9.0]}>
         <boxGeometry args={[0.04, 0.04, 9.5]} />
+        <meshStandardMaterial color="#4a5a6a" roughness={0.6} metalness={0.5} />
+      </mesh>
+      {/* Mid rail */}
+      <mesh position={[-4.05, 4.10, -9.0]}>
+        <boxGeometry args={[0.03, 0.03, 9.5]} />
         <meshStandardMaterial color="#4a5a6a" roughness={0.6} metalness={0.5} />
       </mesh>
       {/* Rail posts */}
       {Array.from({ length: 7 }, (_, i) => (
-        <mesh key={i} position={[-5.05, 3.97, -4.8 - i * 1.3]} castShadow>
+        <mesh key={i} position={[-4.05, 3.97, -4.8 - i * 1.3]} castShadow>
           <cylinderGeometry args={[0.022, 0.022, 0.9, 8]} />
           <meshStandardMaterial color="#4a5a6a" roughness={0.6} metalness={0.5} />
         </mesh>
       ))}
 
       {/* ── Mezzanine overhead light fixtures ─────────────────────────── */}
-      {([-5.5, -8.5] as const).map((z, i) => (
-        <group key={i} position={[-6.5, 5.6, z]}>
+      {([-5.5, -8.5, -12.0] as const).map((z, i) => (
+        <group key={i} position={[-6.0, 5.6, z]}>
           <RoundedBox args={[0.28, 0.06, 0.28]} radius={0.02}>
             <meshStandardMaterial color="#2a3040" roughness={0.7} metalness={0.3} />
           </RoundedBox>
@@ -93,13 +103,13 @@ export function Stairs() {
               side={2}
             />
           </mesh>
-          <pointLight position={[0, -0.1, 0]} intensity={0.5} distance={4} color="#fffbe0" />
+          <pointLight position={[0, -0.1, 0]} intensity={0.8} distance={5} color="#fffbe0" />
         </group>
       ))}
 
       {/* ── Structural columns supporting mezzanine ───────────────────── */}
-      {([-4.5, -9.5] as const).map((z, i) => (
-        <mesh key={i} position={[-5.05, 1.75, z]} castShadow>
+      {([-4.5, -9.5, -13.5] as const).map((z, i) => (
+        <mesh key={i} position={[-4.08, 1.75, z]} castShadow>
           <cylinderGeometry args={[0.08, 0.10, 3.5, 10]} />
           <meshStandardMaterial color="#6a7a8a" roughness={0.8} metalness={0.2} />
         </mesh>

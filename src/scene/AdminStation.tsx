@@ -1,11 +1,10 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { C } from '../styles/palette';
 import { useStore } from '../state/store';
 
-// Helper for rounded rects on canvas (no roundRect API needed)
 function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -25,16 +24,12 @@ interface WorkerInfo { name: string; sensors: { heart_rate: number; spo2: number
 
 const CW = 1024, CH = 640;
 
-function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
-  const canvas = document.createElement('canvas');
-  canvas.width = CW; canvas.height = CH;
+function buildDashTexture(canvas: HTMLCanvasElement, alerts: AlertInfo[], workers: WorkerInfo[]) {
   const ctx = canvas.getContext('2d')!;
 
-  // ── Background — bright white ─────────────────────────────────────
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, CW, CH);
 
-  // ── Header bar ────────────────────────────────────────────────────
   const hasActive = alerts.some(a => !a.acknowledged);
   ctx.fillStyle = hasActive ? '#c02020' : '#1a3a6e';
   ctx.fillRect(0, 0, CW, 48);
@@ -47,7 +42,6 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
   ctx.fillText(hasActive ? '● ALERT ACTIVE' : '● ALL CLEAR', CW - 16, 30);
   ctx.textAlign = 'left';
 
-  // ── Stat tiles ────────────────────────────────────────────────────
   const activeAlerts = alerts.filter(a => !a.acknowledged).length;
   const avgHR = workers.length ? Math.round(workers.reduce((s, w) => s + w.sensors.heart_rate, 0) / workers.length) : 0;
   const atRisk = workers.filter(w => w.effects.dangerFlag || w.sensors.battery < 15 || w.sensors.spo2 < 95).length;
@@ -73,7 +67,6 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
     ctx.fillText(tile.label, x + 14, 132);
   });
 
-  // ── Workers section ───────────────────────────────────────────────
   ctx.fillStyle = '#111827';
   ctx.font = 'bold 15px system-ui, sans-serif';
   ctx.fillText('WORKERS', 12, 168);
@@ -87,7 +80,6 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
     ctx.strokeStyle = w.effects.dangerFlag ? '#fca5a5' : '#e5e7eb'; ctx.lineWidth = 1.5;
     rrect(ctx, 12, y, CW - 24, 44, 8); ctx.stroke();
 
-    // Status dot
     ctx.fillStyle = w.effects.dangerFlag ? '#ef4444' : '#22c55e';
     ctx.shadowColor = w.effects.dangerFlag ? '#ef4444' : '#22c55e';
     ctx.shadowBlur = 6;
@@ -99,7 +91,6 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
     const short = w.name.split(' ')[0] + ' ' + (w.name.split(' ')[1]?.[0] ?? '') + '.';
     ctx.fillText(short, 50, y + 27);
 
-    // Sensor pills
     const pills = [
       { label: `HR: ${w.sensors.heart_rate}`, bad: w.sensors.heart_rate > 100 },
       { label: `SpO₂: ${w.sensors.spo2}%`,   bad: w.sensors.spo2 < 95 },
@@ -119,7 +110,6 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
     });
   });
 
-  // ── Alerts section ────────────────────────────────────────────────
   const alertY = 178 + workers.length * 52 + 16;
   ctx.fillStyle = '#111827';
   ctx.font = 'bold 15px system-ui, sans-serif';
@@ -141,8 +131,7 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
       ctx.strokeStyle = a.acknowledged ? '#4ade80' : '#f87171'; ctx.lineWidth = 2;
       rrect(ctx, 12, y, CW - 24, 42, 8); ctx.stroke();
 
-      const dot = a.acknowledged ? '#22c55e' : '#ef4444';
-      ctx.fillStyle = dot;
+      ctx.fillStyle = a.acknowledged ? '#22c55e' : '#ef4444';
       ctx.beginPath(); ctx.arc(28, y + 21, 7, 0, Math.PI * 2); ctx.fill();
 
       ctx.fillStyle = a.acknowledged ? '#166534' : '#991b1b';
@@ -153,11 +142,10 @@ function buildDashTexture(alerts: AlertInfo[], workers: WorkerInfo[]) {
       ctx.fillText(`${a.acknowledged ? '✓ Acknowledged' : '⚠ OPEN'} · ${a.severity.toUpperCase()} · WO: ${a.workOrder ?? '—'}`, 44, y + 34);
     });
   }
-
-  return canvas;
 }
 
 export function AdminStation() {
+  const canvasRef    = useRef<HTMLCanvasElement | null>(null);
   const texRef       = useRef<THREE.CanvasTexture | null>(null);
   const screenRef    = useRef<THREE.Mesh>(null!);
   const screenMatRef = useRef<THREE.MeshStandardMaterial>(null!);
@@ -178,42 +166,40 @@ export function AdminStation() {
     effects: { ringColor: w.effects.ringColor, dangerFlag: w.effects.dangerFlag },
   }));
 
-  // Rebuild texture when data changes
-  useMemo(() => {
-    const canvas = buildDashTexture(alertsForTex, workersForTex);
-    if (texRef.current) {
-      const ctx = (texRef.current.image as HTMLCanvasElement).getContext('2d')!;
-      ctx.drawImage(canvas, 0, 0);
-      texRef.current.needsUpdate = true;
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alerts, workers]);
-
-  // Create initial texture
+  // Create canvas + texture once on mount
   useEffect(() => {
-    const canvas = buildDashTexture(alertsForTex, workersForTex);
+    const canvas = document.createElement('canvas');
+    canvas.width = CW; canvas.height = CH;
+    buildDashTexture(canvas, alertsForTex, workersForTex);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
+    canvasRef.current = canvas;
     texRef.current = tex;
     if (screenMatRef.current) {
       screenMatRef.current.map = tex;
       screenMatRef.current.emissiveMap = tex;
       screenMatRef.current.needsUpdate = true;
     }
-    return () => { tex.dispose(); };
+    return () => tex.dispose();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Redraw when alert/worker data changes
+  useEffect(() => {
+    if (!canvasRef.current || !texRef.current) return;
+    buildDashTexture(canvasRef.current, alertsForTex, workersForTex);
+    texRef.current.needsUpdate = true;
+    if (screenMatRef.current) screenMatRef.current.needsUpdate = true;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alerts, workers]);
+
+  // Smooth brightness transition — no oscillation
   useFrame(() => {
     if (!screenMatRef.current) return;
-    if (phase === 'acknowledged') {
-      const t = performance.now() * 0.001;
-      screenMatRef.current.emissiveIntensity = 3.2 + Math.sin(t * 5) * 0.4;
-    } else if (phase !== 'idle') {
-      screenMatRef.current.emissiveIntensity = 3.6;
-    } else {
-      screenMatRef.current.emissiveIntensity = 2.8;
-    }
+    const want = phase === 'alerting' ? 3.2 : phase === 'acknowledged' ? 3.0 : 2.5;
+    screenMatRef.current.emissiveIntensity = THREE.MathUtils.lerp(
+      screenMatRef.current.emissiveIntensity, want, 0.06,
+    );
   });
 
   return (
@@ -235,26 +221,25 @@ export function AdminStation() {
         <meshStandardMaterial color="#1a2030" roughness={0.7} metalness={0.2} />
       </mesh>
 
-      {/* Monitor frame — wide, bright dashboard visible from overview */}
+      {/* Monitor frame */}
       <RoundedBox args={[2.2, 1.42, 0.07]} radius={0.04} position={[0, 1.82, -0.1]} castShadow>
         <meshStandardMaterial color={C.monitorFrame} roughness={0.85} metalness={0.1} />
       </RoundedBox>
 
-      {/* Monitor screen — always-on bright emissive so it's readable from overview */}
+      {/* Monitor screen */}
       <mesh ref={screenRef} position={[0, 1.82, -0.065]}>
         <planeGeometry args={[2.08, 1.30]} />
         <meshStandardMaterial
           ref={screenMatRef}
           color="#ffffff"
           emissive="#ffffff"
-          emissiveIntensity={2.8}
+          emissiveIntensity={2.5}
           roughness={0.05}
           metalness={0}
           toneMapped={false}
         />
       </mesh>
 
-      {/* Strong screen glow so it lights the surrounding area */}
       <pointLight position={[0, 1.82, 0.1]} intensity={1.8} distance={5} color="#e8f0ff" />
 
       {/* Side screen */}
