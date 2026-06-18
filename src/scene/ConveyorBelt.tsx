@@ -20,10 +20,11 @@ export function ConveyorBelt({ position, rotationY = 0, length = 4.2 }: Props) {
   const roller0   = useRef<THREE.Mesh>(null!);
   const roller1   = useRef<THREE.Mesh>(null!);
 
-  useFrame((_, delta) => {
+  const H = length / 2;
+
+  useFrame((_) => {
     const t = performance.now() * 0.001;
     const SPEED = 0.55;
-    const H = length / 2;
 
     // Packages loop along Z axis
     const pkgs = [pkg0, pkg1, pkg2, pkg3];
