@@ -1,0 +1,349 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #c8b498;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  color: #bfcbd8;
+}
+
+/* ─── Minimal controls strip — top left ─────────────────────────── */
+.controls-strip {
+  position: fixed;
+  top: 14px; left: 14px;
+  z-index: 200;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ctrl-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255,255,255,0.22);
+  background: rgba(16, 20, 32, 0.82);
+  color: #e8e0d4;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ctrl-btn:hover { border-color: #4e80cc; background: rgba(40,60,100,0.88); }
+.ctrl-btn.danger { border-color: rgba(196,64,64,0.5); color: #e87070; }
+.ctrl-btn.danger:hover { border-color: #c44040; background: rgba(120,20,20,0.6); }
+.ctrl-btn.mute { font-size: 15px; padding: 5px 10px; }
+
+.ack-btn {
+  position: fixed;
+  bottom: 60px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  padding: 11px 32px;
+  border-radius: 100px;
+  border: 2px solid #4e80cc;
+  background: rgba(78,128,204,0.25);
+  color: #8bbff0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: background 0.15s;
+}
+.ack-btn:hover { background: rgba(78,128,204,0.45); }
+
+/* ─── Machine sidebar panel ──────────────────────────────────────── */
+.machine-sidebar {
+  position: fixed;
+  right: 16px; top: 50%;
+  transform: translateY(-50%);
+  z-index: 150;
+  width: 220px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  background: rgba(12, 16, 28, 0.94);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+}
+.msb-label {
+  font-size: 10px; font-weight: 700;
+  color: #7a8fa8; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 3px;
+}
+.msb-name {
+  font-size: 15px; font-weight: 700;
+  color: #e8e0d4; margin-bottom: 12px;
+}
+.msb-status {
+  font-size: 11px; font-weight: 700;
+  padding: 4px 10px; border-radius: 6px;
+  display: inline-block; margin-bottom: 12px;
+}
+.msb-status.ok    { background: rgba(34,197,94,0.15);  color: #4ade80; }
+.msb-status.alert { background: rgba(196,64,64,0.18);  color: #e87070; }
+.msb-section {
+  font-size: 10px; font-weight: 700;
+  color: #7a8fa8; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 6px; margin-top: 10px;
+}
+.msb-type-group { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
+.msb-type-btn {
+  flex: 1; min-width: 60px;
+  padding: 5px 6px; border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,0.13);
+  background: rgba(30, 36, 56, 0.8);
+  color: rgba(255,255,255,0.55);
+  font-size: 10px; font-weight: 700; cursor: pointer;
+  text-align: center; transition: all 0.15s;
+}
+.msb-type-btn:hover { background: rgba(50,60,90,0.9); }
+.msb-type-btn.active-fire       { background: rgba(220,80,10,0.28); border-color: #ff6600; color: #ff9944; }
+.msb-type-btn.active-electrical { background: rgba(80,120,230,0.28); border-color: #88aaff; color: #aaccff; }
+.msb-type-btn.active-pressure   { background: rgba(80,160,100,0.28); border-color: #6abf80; color: #90df9a; }
+.msb-fire-btn {
+  width: 100%; padding: 9px 12px; border-radius: 8px;
+  border: 1.5px solid #c44040;
+  background: rgba(196,64,64,0.22);
+  color: #e87070; font-size: 12px; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.04em; transition: background 0.15s;
+}
+.msb-fire-btn:hover { background: rgba(196,64,64,0.4); }
+.msb-fire-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─── Medkit-style panel (worker + admin) ─────────────────────────── */
+.mk-overlay {
+  position: fixed; inset: 0;
+  z-index: 300;
+  background: rgba(0,0,0,0.38);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: mk-fade-in 0.2s ease;
+}
+@keyframes mk-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.mk-panel {
+  width: 680px;
+  max-width: 94vw;
+  max-height: 88vh;
+  border-radius: 22px;
+  background: #f5f0e8;
+  border: 2.5px solid #2a2a2a;
+  box-shadow: 0 24px 72px rgba(0,0,0,0.5);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  animation: mk-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes mk-pop-in {
+  from { transform: scale(0.88); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+.mk-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 2px solid #ddd4c4;
+  background: #f5f0e8;
+}
+.mk-title {
+  font-size: 18px; font-weight: 800; color: #1a1a1a;
+  letter-spacing: -0.02em;
+}
+.mk-badge {
+  padding: 3px 11px; border-radius: 100px;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
+  border: 2px solid #2a2a2a; color: #2a2a2a;
+  text-transform: uppercase;
+}
+.mk-badge.role    { background: #e8dfd0; }
+.mk-badge.live    { background: #d0f0d8; border-color: #1a9a40; color: #1a7030; }
+.mk-badge.alert   { background: #fde8e8; border-color: #c44040; color: #c44040; animation: mk-pulse 1s ease infinite; }
+.mk-badge.ok      { background: #d8f0e0; border-color: #22a050; color: #1a7030; }
+@keyframes mk-pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.55 } }
+
+.mk-close {
+  margin-left: auto;
+  padding: 6px 14px; border-radius: 100px;
+  border: 2px solid #2a2a2a; background: transparent;
+  font-size: 12px; font-weight: 800; cursor: pointer; color: #1a1a1a;
+  transition: background 0.14s;
+}
+.mk-close:hover { background: #e8dfd0; }
+
+/* Stats row */
+.mk-stats {
+  display: flex; gap: 8px;
+  padding: 12px 20px;
+  background: #ede5d8;
+  border-bottom: 2px solid #ddd4c4;
+  overflow-x: auto;
+}
+.mk-stat {
+  flex: 1; min-width: 90px;
+  padding: 11px 10px; border-radius: 14px;
+  border: 2px solid #2a2a2a;
+  text-align: center; cursor: default;
+}
+.mk-stat-value {
+  font-size: 20px; font-weight: 800; color: #1a1a1a; line-height: 1;
+}
+.mk-stat-label {
+  font-size: 9px; font-weight: 700;
+  color: #5a4a38; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.mk-stat.pink    { background: #f8c4b8; }
+.mk-stat.salmon  { background: #f0c89c; }
+.mk-stat.teal    { background: #9ed4cc; }
+.mk-stat.gold    { background: #f0d870; }
+.mk-stat.blue    { background: #a8c0d8; }
+.mk-stat.red     { background: #f8a0a0; }
+.mk-stat.green   { background: #a8e0b0; }
+
+/* Tabs */
+.mk-tabs {
+  display: flex; gap: 6px;
+  padding: 10px 20px;
+  border-bottom: 2px solid #ddd4c4;
+  background: #f5f0e8;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.mk-tab {
+  padding: 6px 16px; border-radius: 100px;
+  border: 2px solid #c8bfb0; background: transparent;
+  font-size: 11px; font-weight: 700; color: #5a4a38;
+  cursor: pointer; white-space: nowrap; transition: all 0.14s;
+}
+.mk-tab:hover { background: #ede5d8; }
+.mk-tab.active {
+  background: #2a2a2a; color: #f5f0e8; border-color: #2a2a2a;
+}
+
+/* Content area */
+.mk-content {
+  padding: 14px 20px;
+  overflow-y: auto;
+  flex: 1;
+  background: #f5f0e8;
+}
+
+/* Row items */
+.mk-row {
+  display: flex; align-items: center;
+  padding: 10px 14px; border-radius: 10px;
+  border: 2px solid #ddd4c4;
+  background: white;
+  margin-bottom: 8px;
+}
+.mk-row-dot {
+  width: 11px; height: 11px; border-radius: 50%;
+  margin-right: 12px; flex-shrink: 0;
+  border: 2px solid rgba(0,0,0,0.15);
+}
+.mk-row-label {
+  font-size: 13px; font-weight: 700; color: #1a1a1a; flex: 1;
+}
+.mk-row-value {
+  font-size: 12px; font-weight: 600; color: #5a4a38;
+}
+.mk-row-badge {
+  font-size: 10px; font-weight: 800;
+  padding: 2px 9px; border-radius: 100px;
+  border: 1.5px solid currentColor;
+}
+.mk-row-badge.ok      { color: #1a8040; background: #d0f0d8; }
+.mk-row-badge.warn    { color: #b05000; background: #fde8c8; }
+.mk-row-badge.danger  { color: #c02020; background: #fde0e0; }
+.mk-row-badge.info    { color: #1040a0; background: #d0e8f8; }
+.mk-row-badge.active  { color: #2a2a2a; background: #f0d870; }
+
+/* Alert banner */
+.mk-alert-banner {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; border-radius: 12px;
+  border: 2px solid #c44040;
+  background: #fde8e8;
+  margin-bottom: 8px;
+  animation: mk-pulse 0.9s ease infinite;
+}
+.mk-alert-icon { font-size: 22px; flex-shrink: 0; }
+.mk-alert-title { font-size: 13px; font-weight: 800; color: #c02020; }
+.mk-alert-sub   { font-size: 11px; color: #8a3030; margin-top: 2px; }
+.mk-alert-btn {
+  margin-left: auto;
+  padding: 6px 14px; border-radius: 8px;
+  border: 2px solid #c44040;
+  background: #c44040; color: white;
+  font-size: 11px; font-weight: 800; cursor: pointer;
+}
+
+/* Send data button */
+.mk-send-btn {
+  width: 100%; padding: 11px; border-radius: 12px;
+  border: 2px solid #2a2a2a;
+  background: #2a2a2a; color: #f5f0e8;
+  font-size: 13px; font-weight: 800; cursor: pointer;
+  margin-top: 6px; letter-spacing: 0.03em;
+  transition: background 0.14s;
+}
+.mk-send-btn:hover   { background: #3a3a3a; }
+.mk-send-btn.sent    { background: #1a8040; border-color: #1a8040; }
+.mk-send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Sensor slider */
+.mk-slider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ddd4c4;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.mk-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  border: 2px solid #f5f0e8;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+.mk-slider:hover::-webkit-slider-thumb { background: #444; }
+
+/* Motion state selector */
+.mk-select {
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 2px solid #c8bfb0;
+  background: white;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1a1a;
+  cursor: pointer;
+  outline: none;
+}
+.mk-select:focus { border-color: #2a2a2a; }
+
+/* Legend bar — bottom */
+.legend {
+  position: fixed;
+  bottom: 14px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex; gap: 18px; align-items: center;
+  padding: 6px 16px; border-radius: 100px;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  background: rgba(16, 20, 32, 0.78);
+  backdrop-filter: blur(10px);
+  font-size: 10px; color: rgba(255,255,255,0.55);
+  pointer-events: none;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot  { width: 8px; height: 8px; border-radius: 50%; }
