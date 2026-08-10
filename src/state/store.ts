@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { WORKER_DEFS } from '../scene/sceneDefs';
+import { routeWorker, buildReason, buildFlags, isMoving, isHighNoise } from '../logic/routing';
 
 export type ScenarioPhase =
   | 'idle'
@@ -75,32 +76,6 @@ export interface Alert {
   firedAt: number;
   acknowledged: boolean;
   decisions: AlertDecision[];
-}
-
-function routeWorker(sensors: SensorData): RoutingDecision {
-  const moving   = sensors.motion_state === 'Walking' || sensors.motion_state === 'Running';
-  const highNoise = sensors.noise_level > 70;
-  if (moving && highNoise)  return { channels: ['haptic', 'audio'],  primary: 'haptic', suppressed: ['visual'] };
-  if (moving && !highNoise) return { channels: ['haptic', 'audio'],  primary: 'haptic', suppressed: ['visual'] };
-  if (!moving && highNoise) return { channels: ['haptic', 'visual'], primary: 'haptic', suppressed: ['audio']  };
-  return                           { channels: ['visual', 'audio'],  primary: 'visual', suppressed: ['haptic'] };
-}
-
-function buildReason(moving: boolean, highNoise: boolean): string {
-  if (moving && highNoise)  return 'In motion + high noise — haptic primary, audio secondary';
-  if (moving && !highNoise) return 'In motion + low noise — haptic primary, audio secondary';
-  if (!moving && highNoise) return 'Stationary + high noise — haptic + visual (audio suppressed)';
-  return 'Stationary + low noise — visual primary, audio secondary';
-}
-
-function buildFlags(sensors: SensorData): string[] {
-  const flags: string[] = [];
-  if (sensors.stress_index > 70) flags.push('High Stress');
-  if (sensors.heart_rate > 100)  flags.push('Elevated HR');
-  if (sensors.spo2 < 95)         flags.push('Low SpO₂');
-  if (sensors.battery < 15)      flags.push('Low Battery');
-  if (sensors.noise_level > 70)  flags.push(`${Math.round(sensors.noise_level)} dB`);
-  return flags;
 }
 
 const defaultEffects = (): WorkerEffect => ({
@@ -344,8 +319,8 @@ export const useStore = create<SceneStore>((set, get) => ({
         const dx   = wDef.position[0] - machinePos[0];
         const dz   = wDef.position[2] - machinePos[2];
         const dist = Math.round(Math.sqrt(dx * dx + dz * dz) * 10) / 10;
-        const moving    = w.sensors.motion_state === 'Walking' || w.sensors.motion_state === 'Running';
-        const highNoise = w.sensors.noise_level > 70;
+        const moving    = isMoving(w.sensors.motion_state);
+        const highNoise = isHighNoise(w.sensors.noise_level);
         const routing   = w.routing;
         return {
           workerId: w.id, workerName: w.name, workerRole: w.role,
