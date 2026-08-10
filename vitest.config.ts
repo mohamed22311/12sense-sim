@@ -1,13 +1,20 @@
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath, URL } from 'node:url';
 
-// Routing/logic tests are pure functions — no DOM needed, so use the fast node env.
+// Decision modules are pure functions — no DOM needed, so the fast node env.
 export default defineConfig({
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // The vendored mobile tests use Jest-style global describe/it/expect.
+    globals: true,
+    setupFiles: ['./vitest.setup.ts'],
+    include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/logic/**/*.ts'],
+      include: ['src/phone/**/*.ts', 'src/net/**/*.ts', 'src/runtime/**/*.ts'],
       reporter: ['text', 'html'],
     },
   },

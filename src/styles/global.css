@@ -1,349 +1,1399 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ─── Palette ───────────────────────────────────────────────────────
+   One ramp, shared with the 3D scene (`styles/palette.ts`). The interface
+   is built on value first: panels sit two steps above the sky the building
+   is drawn against, so they read as glass over the scene rather than as
+   cards floating on it, and the only saturated things on screen are the
+   accent, the signals, and a person.
 
-html, body, #root {
-  width: 100%; height: 100%; overflow: hidden;
-  background: #c8b498;
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  color: #bfcbd8;
+   Named by ROLE, not by colour. `--accent` is the thing you press;
+   `--danger` is the thing that has gone wrong. A future palette change is
+   then a change to this block and nothing else.               */
+
+:root {
+  color-scheme: light;
+
+  /*
+    A daylight interface, to match a daylight scene.
+
+    The panels used to be dark slate over a dark sky. Once the world became a
+    sunlit site they read as a different product bolted on top of it — so they
+    are light now, and translucent, so the building shows through and they sit
+    *over* the scene rather than beside it.
+
+    Named by ROLE, not by colour: `--accent` is the thing you press,
+    `--danger` is the thing that has gone wrong. The next palette change is
+    this block and nothing else.
+  */
+
+  /* neutral ramp — cool grey, matching the structure in the scene */
+  --n-900: #16202b;
+  --n-800: #243140;
+  --n-700: #35455a;
+  --n-600: #4a5b71;
+  --n-500: #64768c;
+  --n-400: #8695a8;
+  --n-300: #a8b5c4;
+  --n-200: #c7d1dc;
+  --n-100: #e2e8ef;
+  --n-50:  #f2f6fa;
+
+  /* grounds — translucent white, so the site reads through the glass */
+  --bg: #dceaf5;
+  --bg-deep: #b9cfe2;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-hover: rgba(255, 255, 255, 0.94);
+  --surface-raised: #ffffff;
+  --surface-sunk: rgba(22, 32, 43, 0.06);
+  --surface-sunk-hover: rgba(22, 32, 43, 0.1);
+  --field: #ffffff;
+
+  /* ink */
+  --ink: #16202b;
+  --ink-2: #3d4d60;
+  --on-accent: #ffffff;
+
+  /* accent — a deep industrial blue: the thing you press */
+  --accent: #1f6fb2;
+  --accent-edge: #17568b;
+  --accent-hover: #2680cb;
+  --accent-muted: #6d8ba6;
+
+  /* signals */
+  --danger: #cf3b34;
+  --danger-edge: #a92e28;
+  --danger-hover: #b8342d;
+  --danger-ink: #8c231d;
+  --warn-ink: #8a5a08;
+  --ok-ink: #1d6b41;
+
+  /* severity chips */
+  --chip-on: var(--n-600);
+  --chip-on-edge: var(--n-700);
+  --sev-low: #2f7d55;
+  --sev-low-edge: #256341;
+  --sev-medium-edge: #9a6a10;
+
+  /* the driven worker — deliberately not the accent */
+  --drive: #6b3fc4;
+  --drive-edge: #55309e;
+  --drive-hover: #7a4dd6;
 }
 
-/* ─── Minimal controls strip — top left ─────────────────────────── */
-.controls-strip {
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/*
+  The stack names only faces that are actually present. It previously led with
+  'Inter', which this app has never shipped — no @font-face, no webfont link —
+  so every machine already fell through to the next entry. Naming a font we do
+  not load makes the design look intentional in a stylesheet and arbitrary on
+  screen. If a brand face is chosen later it gets self-hosted and added here.
+*/
+html, body, #root {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--bg);
+  font-family: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system,
+    'Helvetica Neue', sans-serif;
+  color: var(--ink);
+}
+
+/* ─── Setup screen ──────────────────────────────────────────────────
+   The first thing anyone sees, and the last moment before real accounts
+   are written to a production server. It lives in the same warm daylight
+   world as the scene behind it, so pressing Start reads as stepping into
+   that building rather than as leaving a form.                        */
+
+.setup {
   position: fixed;
-  top: 14px; left: 14px;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  /* A cool vignette: lighter where the card sits, falling away at the edges,
+     so the screen has a centre without needing a border. */
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--slate-600) 0%, var(--bg) 52%, var(--slate-900) 100%);
+  overflow: auto;
+}
+
+.setup-card {
+  width: min(560px, 100%);
+  padding: 44px 44px 38px;
+  border-radius: 18px;
+  background: var(--surface-raised);
+  border: 1px solid rgba(22, 32, 43, 0.16);
+  /* offset and blur, so the card sits on the surface rather than glowing */
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.14);
+  color: var(--ink);
+  animation: setup-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The one authored moment on this screen. */
+@keyframes setup-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-card { animation: none; }
+}
+
+.setup-title {
+  font-size: clamp(28px, 4.4vw, 38px);
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+  font-weight: 660;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+.setup-lede {
+  margin-top: 14px;
+  max-width: 46ch;
+  font-size: 15px;
+  line-height: 1.62;
+  color: var(--ink-2);
+}
+
+.setup-field { margin-top: 32px; }
+
+.setup-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+}
+
+.setup-input-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.setup-input {
+  width: 116px;
+  padding: 11px 14px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--field);
+  border: 1.5px solid var(--bg-deep);
+  border-radius: 10px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.setup-input:hover:not(:disabled) { border-color: rgba(22, 32, 43, 0.5); }
+
+.setup-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.22);
+}
+
+.setup-input:disabled {
+  color: var(--slate-300);
+  background: rgba(62, 71, 83, 0.5);
+  border-color: rgba(22, 32, 43, 0.14);
+  cursor: not-allowed;
+}
+
+.setup-hint {
+  font-size: 13px;
+  color: rgba(22, 32, 43, 0.62);
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-start {
+  margin-top: 28px;
+  width: 100%;
+  padding: 15px 20px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 640;
+  letter-spacing: 0.005em;
+  color: var(--on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 140ms ease, transform 90ms ease, box-shadow 140ms ease;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+.setup-start:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.34);
+}
+
+.setup-start:active:not(:disabled) { transform: translateY(1px); }
+
+.setup-start:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.3), 0 6px 16px rgba(0, 0, 0, 0.28);
+}
+
+.setup-start:disabled {
+  background: var(--slate-500);
+  color: var(--slate-200);
+  cursor: progress;
+  box-shadow: none;
+}
+
+.setup-consequence {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(22, 32, 43, 0.62);
+  text-align: center;
+}
+
+.setup-progress { margin-top: 26px; }
+
+.setup-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--ink-2);
+}
+
+.setup-progress-pct {
+  font-variant-numeric: tabular-nums;
+  color: rgba(22, 32, 43, 0.62);
+}
+
+.setup-progress-track {
+  margin-top: 9px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(22, 32, 43, 0.22);
+  overflow: hidden;
+}
+
+.setup-progress-fill {
+  /* Scaled rather than resized: animating `width` relayouts the bar on every
+     frame it moves, and this one moves sixty times during provisioning.
+     transform runs on the compositor and looks identical. */
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.setup-error {
+  margin-top: 20px;
+  padding: 13px 15px;
+  border-radius: 10px;
+  background: rgba(214, 69, 69, 0.12);
+  border: 1px solid rgba(214, 69, 69, 0.34);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--danger-ink);
+}
+
+/* ─── Floor rail ────────────────────────────────────────────────────
+   A six-storey stack is hard to click and its in-world labels are far too
+   small to read at overview distance, so the floors get a list. It doubles
+   as the answer to "what is on floor 4?" without flying there.          */
+
+.floor-rail {
+  position: fixed;
+  top: 50%;
+  right: 18px;
+  transform: translateY(-50%);
   z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.floor-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 178px;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid rgba(22, 32, 43, 0.24);
+  border-radius: 9px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+}
+
+.floor-chip:hover {
+  background: var(--surface-hover);
+  border-color: rgba(22, 32, 43, 0.42);
+}
+
+.floor-chip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.24);
+}
+
+.floor-chip.is-active {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent-edge);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+}
+
+.floor-chip-id {
+  flex: none;
+  width: 20px;
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.floor-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.floor-chip-meta {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.floor-chip-alarm {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(214, 69, 69, 0.22);
+}
+
+/* ─── Operator console ──────────────────────────────────────────────
+   A six-storey stack is tall and narrow, so a widescreen frame is mostly
+   empty either side of it. Zooming in to fill that space costs the thing
+   the overview is for — seeing every floor at once — so the space carries
+   what the building itself cannot say at this distance: where people are,
+   and what is in alarm.                                                */
+
+.hud-brand {
+  position: fixed;
+  top: 18px;
+  left: 22px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.hud-brand-mark {
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(22, 32, 43, 0.52);
+}
+
+.hud-brand-site {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hud-panel {
+  position: fixed;
+  z-index: 200;
+  /*
+    The columns are taller than their contents — the left one stretches to the
+    bottom of the viewport so it can scroll when a worker panel opens. That
+    empty area was still intercepting pointer events, so a 300-pixel-tall strip
+    down the left of the screen silently swallowed every click meant for the
+    building behind it. The panel is a layout box, not a surface; only the
+    things actually drawn in it should take a click.
+  */
+  pointer-events: none;
+}
+
+.hud-card,
+.floor-chip,
+.hud-panel button,
+.hud-panel input,
+.hud-panel select,
+.hud-panel a {
+  pointer-events: auto;
+}
+
+.hud-left {
+  top: 74px;
+  bottom: 18px;
+  left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 236px;
+  /* The worker panel is appended here, and on a short viewport the column can
+     outgrow the screen. It scrolls rather than spilling over the hint line —
+     and the scrollbar only appears when it is actually needed. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Cards keep their own height; a scrolling flex column would otherwise squash
+   them to fit rather than scrolling. */
+.hud-left > * {
+  flex: none;
+}
+
+.hud-right {
+  top: 50%;
+  right: 22px;
+  transform: translateY(-50%);
+}
+
+.hud-card {
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid rgba(22, 32, 43, 0.1);
+  border-radius: 12px;
+  backdrop-filter: blur(10px) saturate(1.1);
+  /* Offset and blur, so a panel sits on the scene rather than glowing on it. */
+  box-shadow: 0 6px 20px rgba(16, 32, 48, 0.14), 0 1px 3px rgba(16, 32, 48, 0.1);
+}
+
+.hud-card-title {
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.ctrl-btn {
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1.5px solid rgba(255,255,255,0.22);
-  background: rgba(16, 20, 32, 0.82);
-  color: #e8e0d4;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  backdrop-filter: blur(10px);
-  letter-spacing: 0.04em;
-  transition: border-color 0.15s, background 0.15s;
-}
-.ctrl-btn:hover { border-color: #4e80cc; background: rgba(40,60,100,0.88); }
-.ctrl-btn.danger { border-color: rgba(196,64,64,0.5); color: #e87070; }
-.ctrl-btn.danger:hover { border-color: #c44040; background: rgba(120,20,20,0.6); }
-.ctrl-btn.mute { font-size: 15px; padding: 5px 10px; }
-
-.ack-btn {
-  position: fixed;
-  bottom: 60px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 200;
-  padding: 11px 32px;
-  border-radius: 100px;
-  border: 2px solid #4e80cc;
-  background: rgba(78,128,204,0.25);
-  color: #8bbff0;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  backdrop-filter: blur(12px);
-  transition: background 0.15s;
-}
-.ack-btn:hover { background: rgba(78,128,204,0.45); }
-
-/* ─── Machine sidebar panel ──────────────────────────────────────── */
-.machine-sidebar {
-  position: fixed;
-  right: 16px; top: 50%;
-  transform: translateY(-50%);
-  z-index: 150;
-  width: 220px;
-  padding: 16px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(255,255,255,0.15);
-  background: rgba(12, 16, 28, 0.94);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
-}
-.msb-label {
-  font-size: 10px; font-weight: 700;
-  color: #7a8fa8; letter-spacing: 0.1em;
-  text-transform: uppercase; margin-bottom: 3px;
-}
-.msb-name {
-  font-size: 15px; font-weight: 700;
-  color: #e8e0d4; margin-bottom: 12px;
-}
-.msb-status {
-  font-size: 11px; font-weight: 700;
-  padding: 4px 10px; border-radius: 6px;
-  display: inline-block; margin-bottom: 12px;
-}
-.msb-status.ok    { background: rgba(34,197,94,0.15);  color: #4ade80; }
-.msb-status.alert { background: rgba(196,64,64,0.18);  color: #e87070; }
-.msb-section {
-  font-size: 10px; font-weight: 700;
-  color: #7a8fa8; letter-spacing: 0.08em;
-  text-transform: uppercase; margin-bottom: 6px; margin-top: 10px;
-}
-.msb-type-group { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
-.msb-type-btn {
-  flex: 1; min-width: 60px;
-  padding: 5px 6px; border-radius: 6px;
-  border: 1.5px solid rgba(255,255,255,0.13);
-  background: rgba(30, 36, 56, 0.8);
-  color: rgba(255,255,255,0.55);
-  font-size: 10px; font-weight: 700; cursor: pointer;
-  text-align: center; transition: all 0.15s;
-}
-.msb-type-btn:hover { background: rgba(50,60,90,0.9); }
-.msb-type-btn.active-fire       { background: rgba(220,80,10,0.28); border-color: #ff6600; color: #ff9944; }
-.msb-type-btn.active-electrical { background: rgba(80,120,230,0.28); border-color: #88aaff; color: #aaccff; }
-.msb-type-btn.active-pressure   { background: rgba(80,160,100,0.28); border-color: #6abf80; color: #90df9a; }
-.msb-fire-btn {
-  width: 100%; padding: 9px 12px; border-radius: 8px;
-  border: 1.5px solid #c44040;
-  background: rgba(196,64,64,0.22);
-  color: #e87070; font-size: 12px; font-weight: 700;
-  cursor: pointer; letter-spacing: 0.04em; transition: background 0.15s;
-}
-.msb-fire-btn:hover { background: rgba(196,64,64,0.4); }
-.msb-fire-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-/* ─── Medkit-style panel (worker + admin) ─────────────────────────── */
-.mk-overlay {
-  position: fixed; inset: 0;
-  z-index: 300;
-  background: rgba(0,0,0,0.38);
-  backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-  animation: mk-fade-in 0.2s ease;
-}
-@keyframes mk-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.mk-panel {
-  width: 680px;
-  max-width: 94vw;
-  max-height: 88vh;
-  border-radius: 22px;
-  background: #f5f0e8;
-  border: 2.5px solid #2a2a2a;
-  box-shadow: 0 24px 72px rgba(0,0,0,0.5);
-  overflow: hidden;
-  display: flex; flex-direction: column;
-  animation: mk-pop-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-@keyframes mk-pop-in {
-  from { transform: scale(0.88); opacity: 0; }
-  to   { transform: scale(1);    opacity: 1; }
-}
-
-.mk-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 16px 20px;
-  border-bottom: 2px solid #ddd4c4;
-  background: #f5f0e8;
-}
-.mk-title {
-  font-size: 18px; font-weight: 800; color: #1a1a1a;
-  letter-spacing: -0.02em;
-}
-.mk-badge {
-  padding: 3px 11px; border-radius: 100px;
-  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
-  border: 2px solid #2a2a2a; color: #2a2a2a;
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-.mk-badge.role    { background: #e8dfd0; }
-.mk-badge.live    { background: #d0f0d8; border-color: #1a9a40; color: #1a7030; }
-.mk-badge.alert   { background: #fde8e8; border-color: #c44040; color: #c44040; animation: mk-pulse 1s ease infinite; }
-.mk-badge.ok      { background: #d8f0e0; border-color: #22a050; color: #1a7030; }
-@keyframes mk-pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.55 } }
-
-.mk-close {
-  margin-left: auto;
-  padding: 6px 14px; border-radius: 100px;
-  border: 2px solid #2a2a2a; background: transparent;
-  font-size: 12px; font-weight: 800; cursor: pointer; color: #1a1a1a;
-  transition: background 0.14s;
-}
-.mk-close:hover { background: #e8dfd0; }
-
-/* Stats row */
-.mk-stats {
-  display: flex; gap: 8px;
-  padding: 12px 20px;
-  background: #ede5d8;
-  border-bottom: 2px solid #ddd4c4;
-  overflow-x: auto;
-}
-.mk-stat {
-  flex: 1; min-width: 90px;
-  padding: 11px 10px; border-radius: 14px;
-  border: 2px solid #2a2a2a;
-  text-align: center; cursor: default;
-}
-.mk-stat-value {
-  font-size: 20px; font-weight: 800; color: #1a1a1a; line-height: 1;
-}
-.mk-stat-label {
-  font-size: 9px; font-weight: 700;
-  color: #5a4a38; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.05em;
-}
-.mk-stat.pink    { background: #f8c4b8; }
-.mk-stat.salmon  { background: #f0c89c; }
-.mk-stat.teal    { background: #9ed4cc; }
-.mk-stat.gold    { background: #f0d870; }
-.mk-stat.blue    { background: #a8c0d8; }
-.mk-stat.red     { background: #f8a0a0; }
-.mk-stat.green   { background: #a8e0b0; }
-
-/* Tabs */
-.mk-tabs {
-  display: flex; gap: 6px;
-  padding: 10px 20px;
-  border-bottom: 2px solid #ddd4c4;
-  background: #f5f0e8;
-  overflow-x: auto;
-  flex-shrink: 0;
-}
-.mk-tab {
-  padding: 6px 16px; border-radius: 100px;
-  border: 2px solid #c8bfb0; background: transparent;
-  font-size: 11px; font-weight: 700; color: #5a4a38;
-  cursor: pointer; white-space: nowrap; transition: all 0.14s;
-}
-.mk-tab:hover { background: #ede5d8; }
-.mk-tab.active {
-  background: #2a2a2a; color: #f5f0e8; border-color: #2a2a2a;
+  color: rgba(22, 32, 43, 0.58);
 }
 
-/* Content area */
-.mk-content {
-  padding: 14px 20px;
-  overflow-y: auto;
-  flex: 1;
-  background: #f5f0e8;
+.hud-badge {
+  padding: 1px 7px;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--on-accent);
+  background: var(--danger);
+  border-radius: 999px;
 }
 
-/* Row items */
-.mk-row {
-  display: flex; align-items: center;
-  padding: 10px 14px; border-radius: 10px;
-  border: 2px solid #ddd4c4;
-  background: white;
-  margin-bottom: 8px;
-}
-.mk-row-dot {
-  width: 11px; height: 11px; border-radius: 50%;
-  margin-right: 12px; flex-shrink: 0;
-  border: 2px solid rgba(0,0,0,0.15);
-}
-.mk-row-label {
-  font-size: 13px; font-weight: 700; color: #1a1a1a; flex: 1;
-}
-.mk-row-value {
-  font-size: 12px; font-weight: 600; color: #5a4a38;
-}
-.mk-row-badge {
-  font-size: 10px; font-weight: 800;
-  padding: 2px 9px; border-radius: 100px;
-  border: 1.5px solid currentColor;
-}
-.mk-row-badge.ok      { color: #1a8040; background: #d0f0d8; }
-.mk-row-badge.warn    { color: #b05000; background: #fde8c8; }
-.mk-row-badge.danger  { color: #c02020; background: #fde0e0; }
-.mk-row-badge.info    { color: #1040a0; background: #d0e8f8; }
-.mk-row-badge.active  { color: #2a2a2a; background: #f0d870; }
-
-/* Alert banner */
-.mk-alert-banner {
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; border-radius: 12px;
-  border: 2px solid #c44040;
-  background: #fde8e8;
-  margin-bottom: 8px;
-  animation: mk-pulse 0.9s ease infinite;
-}
-.mk-alert-icon { font-size: 22px; flex-shrink: 0; }
-.mk-alert-title { font-size: 13px; font-weight: 800; color: #c02020; }
-.mk-alert-sub   { font-size: 11px; color: #8a3030; margin-top: 2px; }
-.mk-alert-btn {
-  margin-left: auto;
-  padding: 6px 14px; border-radius: 8px;
-  border: 2px solid #c44040;
-  background: #c44040; color: white;
-  font-size: 11px; font-weight: 800; cursor: pointer;
+.hud-figure {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 34px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
 }
 
-/* Send data button */
-.mk-send-btn {
-  width: 100%; padding: 11px; border-radius: 12px;
-  border: 2px solid #2a2a2a;
-  background: #2a2a2a; color: #f5f0e8;
-  font-size: 13px; font-weight: 800; cursor: pointer;
-  margin-top: 6px; letter-spacing: 0.03em;
-  transition: background 0.14s;
+.hud-figure-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(22, 32, 43, 0.6);
 }
-.mk-send-btn:hover   { background: #3a3a3a; }
-.mk-send-btn.sent    { background: #1a8040; border-color: #1a8040; }
-.mk-send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* Sensor slider */
-.mk-slider {
-  width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #ddd4c4;
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-}
-.mk-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  background: #2a2a2a;
-  border: 2px solid #f5f0e8;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-  cursor: pointer;
-}
-.mk-slider:hover::-webkit-slider-thumb { background: #444; }
-
-/* Motion state selector */
-.mk-select {
-  padding: 4px 8px;
-  border-radius: 8px;
-  border: 2px solid #c8bfb0;
-  background: white;
+.hud-card-note {
+  margin: 8px 0 0;
   font-size: 12px;
-  font-weight: 600;
-  color: #1a1a1a;
-  cursor: pointer;
-  outline: none;
+  line-height: 1.5;
+  color: rgba(22, 32, 43, 0.66);
 }
-.mk-select:focus { border-color: #2a2a2a; }
 
-/* Legend bar — bottom */
-.legend {
+.hud-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hud-bar button {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  padding: 3px 5px;
+  font: inherit;
+  color: rgba(22, 32, 43, 0.78);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 130ms ease;
+}
+
+.hud-bar button:hover {
+  background: rgba(22, 32, 43, 0.1);
+}
+
+.hud-bar button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.hud-bar.is-active button {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hud-bar-id {
+  flex: none;
+  width: 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-bar-track {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  background: rgba(22, 32, 43, 0.16);
+  border-radius: 999px;
+}
+
+.hud-bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent-muted);
+  border-radius: 999px;
+  transform-origin: left center;
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hud-bar.is-active .hud-bar-fill {
+  background: var(--accent);
+}
+
+.hud-bar-count {
+  flex: none;
+  width: 18px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hud-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hud-alerts li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.hud-alert {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ink);
+  background: rgba(214, 69, 69, 0.1);
+  border: 1px solid rgba(214, 69, 69, 0.28);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.hud-alert-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: hud-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes hud-pulse {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-alert-dot { animation: none; }
+}
+
+.hud-alert-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-alert-floor {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(22, 32, 43, 0.6);
+}
+
+.hud-alert-clear {
+  flex: none;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 11px;
+  color: rgba(22, 32, 43, 0.7);
+  background: none;
+  border: 1px solid rgba(22, 32, 43, 0.24);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.hud-alert-clear:hover {
+  color: var(--ink);
+  border-color: rgba(22, 32, 43, 0.5);
+}
+
+/* Bottom right. Centred it sat on the building, and the left column now runs
+   the full height of the viewport. */
+.hud-hint {
   position: fixed;
-  bottom: 14px; left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  display: flex; gap: 18px; align-items: center;
-  padding: 6px 16px; border-radius: 100px;
-  border: 1.5px solid rgba(255,255,255,0.18);
-  background: rgba(16, 20, 32, 0.78);
-  backdrop-filter: blur(10px);
-  font-size: 10px; color: rgba(255,255,255,0.55);
+  right: 22px;
+  bottom: 18px;
+  text-align: right;
+  z-index: 200;
+  margin: 0;
+  font-size: 11.5px;
+  color: rgba(22, 32, 43, 0.44);
   pointer-events: none;
 }
-.legend-item { display: flex; align-items: center; gap: 5px; }
-.legend-dot  { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ─── Machine alert dialog ──────────────────────────────────────────
+   The one place in the simulator where a human types something a sensor
+   would normally send. Everything past the button is real, so the dialog
+   reads as an instrument panel rather than a form: the asset id is set in
+   a monospace face because it is an identifier a dispatcher will match
+   against, not prose.                                                  */
+
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(12, 16, 22, 0.34);
+  backdrop-filter: blur(2px);
+  animation: dialog-fade 160ms ease;
+}
+
+.dialog {
+  width: min(440px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--surface-raised);
+  border: 1px solid rgba(22, 32, 43, 0.26);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+  animation: dialog-rise 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dialog-fade {
+  from { opacity: 0; }
+}
+
+@keyframes dialog-rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-scrim, .dialog { animation: none; }
+}
+
+.dialog-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(22, 32, 43, 0.16);
+}
+
+.dialog-eyebrow {
+  margin: 0 0 3px;
+  font-size: 11px;
+  font-weight: 620;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(22, 32, 43, 0.52);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 620;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.dialog-asset {
+  margin: 4px 0 0;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 12px;
+  color: rgba(22, 32, 43, 0.62);
+}
+
+.dialog-close {
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 22px;
+  line-height: 1;
+  color: rgba(22, 32, 43, 0.5);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.dialog-close:hover { color: var(--ink); }
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 18px 20px 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.field legend,
+.field-label {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(22, 32, 43, 0.56);
+}
+
+.field-value {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.field-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgba(22, 32, 43, 0.58);
+}
+
+.field-input {
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid rgba(22, 32, 43, 0.3);
+  border-radius: 9px;
+  resize: vertical;
+}
+
+.field-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.18);
+}
+
+.field-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 6px 11px;
+  font: inherit;
+  font-size: 12.5px;
+  color: rgba(22, 32, 43, 0.8);
+  background: var(--field);
+  border: 1px solid rgba(22, 32, 43, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease, color 130ms ease;
+}
+
+.chip:hover { border-color: rgba(22, 32, 43, 0.55); }
+
+.chip:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.18);
+}
+
+/* Selected chips carry light ink by default, because the base selected
+   background is mid-slate. The one exception is brass, which is light enough
+   that only dark ink reads on it — stated explicitly below rather than left
+   to whichever rule happens to win. */
+.chip.is-on {
+  color: var(--ink);
+  background: var(--chip-on);
+  border-color: var(--chip-on-edge);
+}
+
+/* Severity carries its own weight — a critical alarm should not look like a
+   low one merely because it happens to be the selected chip. */
+.chip-low.is-on {
+  color: var(--ink);
+  background: var(--sev-low);
+  border-color: var(--sev-low-edge);
+}
+
+.chip-medium.is-on {
+  color: var(--ink);
+  background: var(--accent-muted);
+  border-color: var(--sev-medium-edge);
+}
+
+.chip-high.is-on {
+  /* Brass is the lightest chip; only dark ink reaches contrast on it. */
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent-edge);
+}
+
+.chip-critical.is-on {
+  /* The deeper red, not the signal red. At 12.5px the signal red measured
+     3.95:1 against near-white and needs 4.5; this reaches 5.7. The signal
+     itself is unchanged — a chip and an alarm lamp have different jobs and
+     only one of them has small text on it. */
+  color: #fff0ee;
+  background: var(--danger-edge);
+  border-color: #8f2c2c;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.btn {
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--ink-2);
+  background: var(--surface-sunk);
+  border: 1px solid rgba(22, 32, 43, 0.28);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 130ms ease, border-color 130ms ease;
+}
+
+.btn:hover { background: var(--surface-sunk-hover); }
+
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.2);
+}
+
+.btn-primary {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent-edge);
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dialog-success {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ok-ink);
+}
+
+.dialog-error {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--danger-ink);
+  background: rgba(214, 69, 69, 0.09);
+  border: 1px solid rgba(214, 69, 69, 0.26);
+  border-radius: 9px;
+}
+
+.dialog-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(22, 32, 43, 0.66);
+}
+
+.dialog-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+}
+
+.dialog-facts > div {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.dialog-facts dt {
+  font-size: 12px;
+  color: rgba(22, 32, 43, 0.58);
+}
+
+.dialog-facts dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 580;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.dialog-facts .mono {
+  overflow: hidden;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Worker panel and watch ────────────────────────────────────────
+   The watch face is a readout of a decision already made on the phone —
+   never a control for it. The only controls are the two answers a real
+   watch offers, and the two dials that change what the body is doing.  */
+
+.worker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.worker-head {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.worker-head .hud-card-title { margin: 0; }
+
+.worker-head .dialog-close {
+  margin: -6px -4px 0 auto;
+  font-size: 19px;
+}
+
+.worker-name {
+  margin: 3px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.worker-doing {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(22, 32, 43, 0.66);
+}
+
+/* The watch itself: a dark face on a warm panel, so it reads as a device
+   rather than as another card. */
+.watch {
+  padding: 3px;
+  background: linear-gradient(160deg, var(--slate-500), var(--slate-700));
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.watch-face {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  padding: 15px 12px;
+  text-align: center;
+  background: #0e141c;
+  border-radius: 15px;
+  transition: background 200ms ease;
+}
+
+.watch.is-alerting .watch-face {
+  background: #3a1618;
+  animation: watch-alarm 1.5s ease-in-out infinite;
+}
+
+@keyframes watch-alarm {
+  50% { background: #532025; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watch.is-alerting .watch-face { animation: none; }
+}
+
+.watch-vital {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #eef4fa;
+}
+
+.watch-vital-unit {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(238, 244, 250, 0.55);
+}
+
+.watch-vital-small {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(238, 244, 250, 0.62);
+}
+
+.watch-band {
+  margin: 1px 0 0;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+}
+
+.watch-band.is-normal  { color: #a8e6b4; background: rgba(95, 168, 127, 0.16); }
+.watch-band.is-caution { color: #ffd79a; background: rgba(217, 161, 59, 0.18); }
+.watch-band.is-danger  { color: #ffb4ab; background: rgba(239, 68, 68, 0.2); }
+
+.watch-alert-label {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 190, 180, 0.85);
+}
+
+.watch-alert-message {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 560;
+  line-height: 1.35;
+  color: #fdeae7;
+}
+
+.watch-modality {
+  display: flex;
+  gap: 5px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The channels the phone's own modality decision turned on. Colour-coded to
+   the app's own scheme so a viewer who has seen the handset recognises them. */
+.watch-channel {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 620;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+}
+
+.watch-channel.is-visual { color: #cfe0ff; background: rgba(90, 143, 212, 0.32); }
+.watch-channel.is-haptic { color: #ded0ff; background: rgba(139, 124, 200, 0.32); }
+.watch-channel.is-sound  { color: #ffdcbb; background: rgba(201, 135, 58, 0.34); }
+
+.watch-distance {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(253, 234, 231, 0.6);
+}
+
+.worker-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.worker-actions .btn { flex: 1; }
+
+.worker-vitals {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.worker-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: rgba(22, 32, 43, 0.6);
+}
+
+.worker-raised {
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-radius: 9px;
+}
+
+.worker-raised strong { font-weight: 640; }
+
+.worker-raised.is-caution {
+  color: var(--warn-ink);
+  background: rgba(217, 161, 59, 0.13);
+  border: 1px solid rgba(217, 161, 59, 0.32);
+}
+
+.worker-raised.is-danger {
+  color: var(--danger-ink);
+  background: rgba(214, 69, 69, 0.1);
+  border: 1px solid rgba(214, 69, 69, 0.3);
+}
+
+.btn-danger {
+  color: var(--on-accent);
+  background: var(--danger);
+  border-color: var(--danger-edge);
+}
+
+.btn-danger:hover { background: var(--danger-hover); }
+
+.purge-counts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 10px 0;
+  padding: 0;
+  font-size: 12px;
+  list-style: none;
+  color: rgba(22, 32, 43, 0.7);
+}
+
+.purge-counts li {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.purge-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 580;
+  color: var(--ink);
+}
+
+/* Site choice, before anything is created. Two cards rather than a select:
+   the difference between them is what each one contains, and a dropdown
+   cannot say that. */
+.setup-sites {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.setup-site {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 13px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--field);
+  border: 1px solid rgba(22, 32, 43, 0.28);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 130ms ease, background 130ms ease;
+}
+
+.setup-site:hover:not(:disabled) {
+  border-color: rgba(22, 32, 43, 0.55);
+}
+
+.setup-site:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.2);
+}
+
+.setup-site.is-on {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent-edge);
+}
+
+.setup-site:disabled {
+  cursor: not-allowed;
+}
+
+.setup-site:disabled:not(.is-on) {
+  opacity: 0.5;
+}
+
+.setup-site-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.setup-site-meta {
+  font-size: 11.5px;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Selection ─────────────────────────────────────────────────────
+   This is a pointer-driven interface over a 3D canvas: clicking a worker,
+   dragging to orbit, clicking again. Every one of those gestures also
+   drag-selects whatever HUD text it passes over, which looks like a
+   rendering fault. Labels and controls opt out; anything a person might
+   genuinely want to copy — an event id, an asset id — stays selectable. */
+
+.hud-panel,
+.hud-brand,
+.hud-hint,
+.setup-card {
+  user-select: none;
+}
+
+.dialog-asset,
+.dialog-facts .mono,
+.field-input {
+  user-select: text;
+}
+
+.worker-control {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 11px;
+  background: rgba(90, 143, 212, 0.07);
+  border: 1px solid rgba(90, 143, 212, 0.22);
+  border-radius: 10px;
+}
+
+.worker-control .btn-primary {
+  color: #f4f8ff;
+  background: var(--drive);
+  border-color: var(--drive-edge);
+}
+
+.worker-control .btn-primary:hover { background: var(--drive-hover); }
+
+select.field-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, rgba(22, 32, 43, 0.55) 50%),
+    linear-gradient(135deg, rgba(22, 32, 43, 0.55) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+
+.hud-anchor-geo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  margin: 2px 0 0;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.hud-anchor-source {
+  font-family: inherit;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(22, 32, 43, 0.55);
+}
+
+.hud-card > .btn + .btn { margin-top: 2px; }
+
+.hud-joincode {
+  margin: 4px 0 10px;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  user-select: text;
+}
+
+/* A health alert takes the watch face too. Danger reads hotter than caution
+   because the app treats them differently — danger is alarm-grade with a
+   full-screen wake, caution is an audible heads-up. */
+.watch.is-health-danger .watch-face {
+  background: #3a1618;
+  animation: watch-alarm 1.5s ease-in-out infinite;
+}
+
+.watch.is-health-caution .watch-face {
+  background: #3a2f14;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watch.is-health-danger .watch-face { animation: none; }
+}

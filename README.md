@@ -1,112 +1,57 @@
-# Twelve Senses — 3D Simulation
+# Twelve Senses — Demo Simulator
 
-An interactive 3D demo of the Twelve Senses context-aware alert routing: a night-shift factory
-where a critical machine alert is routed to each worker through the **safest modality** (haptic /
-audio / visual) based on their live state. Built with React + Three.js (@react-three/fiber) + Vite.
+The deployed build of the demo simulator. **Start here: [`DEMO.md`](DEMO.md)** for
+accounts and the runbook, or [`docs/DEMO-GUIDE.md`](docs/DEMO-GUIDE.md) for the
+full version with limitations.
 
-## Alert routing rules (for SME review)
+A 3D simulation of a six-storey site with sixty workers. Every worker has a real
+account on the real server, a real WebSocket, and runs the mobile app's own
+decision code — the proximity gate, the modality picker and the health risk
+engine are the app's modules, copied in unmodified.
 
-The routing decision is a small, deterministic, fully-tested pure function in
-[`src/logic/routing.ts`](src/logic/routing.ts). Modality is chosen from the worker's **motion** and
-the ambient **noise** only:
+## This repo is a mirror
 
-| Motion | Noise (dB) | Primary | Channels | Suppressed |
-|---|---|---|---|---|
-| Moving | > 70 (high) | haptic | haptic | visual, audio |
-| Moving | ≤ 70 (low) | haptic | haptic, audio | visual |
-| Stationary | > 70 (high) | haptic | haptic, visual | audio |
-| Stationary | ≤ 70 (low) | visual | visual, audio | haptic |
+The source of truth is
+[`TwelveSense-TT-SimData`](https://github.com/OmdenaAI/TwelveSense-TT-SimData),
+where the app lives under `scene-3d/`. Here it sits at the repository root,
+because Vercel builds from the root.
 
-For **moving + high noise** the alert is **haptic-only**, per the charter — audio can't be heard
-over high noise, so it's suppressed. This is gated behind the `AUDIO_IN_HIGH_NOISE_MOTION` flag in
-`src/logic/routing.ts` (set it to `true` to also play audio there).
+**Make changes upstream and re-sync.** Editing here directly will be overwritten
+by the next sync, and the vendored-module drift check cannot run here (see
+below), so a change made here loses the guard that keeps the simulator honest
+about the app's behaviour.
 
-**Safe fallback**: missing/NaN noise is treated as *high*, and unknown motion as *moving* — both
-bias toward the haptic wrist channel rather than assuming a glanceable screen is safe.
-
-## Develop & test
+## Local
 
 ```bash
 npm install
-npm run dev        # local dev server
-npm run build      # type-check + production build
-npm run test       # watch-mode unit tests (Vitest)
-npm run test:run   # single test run
-npm run coverage   # test run with coverage report
+npm run dev
 ```
 
----
+`?preview` runs the whole simulation with no network at all — no accounts, no
+tenant — which is how the scene is worked on without provisioning sixty real
+logins. `?preview=construction` does the same for the other site.
 
-## React + TypeScript + Vite (template notes)
+## Deployment
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Vercel builds `npm run build` to `dist`. Two rewrites, and the order matters:
 
-Currently, two official plugins are available:
+1. `/api/:path*` proxies to the deployed backend. This is what replaces the
+   Vite dev proxy in production, and it means the browser sees the API as
+   same-origin — so the app works regardless of the server's CORS
+   configuration, exactly as it does in development.
+2. `/(.*)` serves `index.html`, so a deep link does not 404.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Point `VITE_API_BASE_URL` at the backend directly if you would rather skip the
+proxy; the app reads it and falls back to `/api/v1`.
 
-## React Compiler
+## `npm run check:vendor` skips here
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The simulator copies pure decision modules from the mobile app byte-for-byte,
+and that script proves the copies have not drifted from the pinned commit. It
+needs a mobile checkout beside the repo, which a deployment mirror does not
+have, so it skips with a message rather than failing.
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Run it in `TwelveSense-TT-SimData`, where the mobile repo sits alongside. A
+check that cannot see its source proves nothing either way, and a script that
+is always red trains people to ignore it where it genuinely works.

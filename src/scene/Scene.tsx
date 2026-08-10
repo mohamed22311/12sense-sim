@@ -1,70 +1,122 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { RoundedBox } from '@react-three/drei';
-import { useStore } from '../state/store';
-import { Floor } from './Floor';
-import { Walls } from './Walls';
-import { Ceiling } from './Ceiling';
-import { Worker } from './Worker';
-import { Machine } from './Machine';
-import { AdminStation } from './AdminStation';
-import { AlertOrb } from './AlertOrb';
-import { DecoWorker } from './DecoWorker';
-import { Stairs } from './Stairs';
-import { ConveyorBelt } from './ConveyorBelt';
-import { WORKER_DEFS, MACHINE_DEFS, WALL_MACHINE_DEFS, DECO_WORKER_DEFS, CAMERA_OVERVIEW, CAMERA_FOCUS } from './sceneDefs';
-import { watchFocusData } from './workerFocusRef';
+import { Building } from '@/scene/building/Building';
+import type { Agents } from '@/sim/agents';
+import type { SiteDef } from '@/sites/types';
+import { BUILDING_CAMERA, buildingCamera } from '@/scene/building/camera';
+import { themeFor } from '@/styles/theme';
+import { useBuildingStore } from '@/state/buildingStore';
+import { SceneEnvironment } from '@/scene/building/environment';
+import { PostFx } from '@/scene/building/PostFx';
+import { Surroundings } from '@/scene/building/Surroundings';
 
 // Shared drag-vs-click state between CameraRig and Scene (same module)
 const _dragState = { wasDragging: false };
 
-function Lights() {
+/**
+ * Lighting a building rather than a room.
+ *
+ * The previous rig put every point light at y≈5, which lit one floor and left
+ * the other five in shadow. Each floor now carries its own pair of ceiling
+ * lights at its own elevation, so the stack is legible top to bottom — and the
+ * key light's shadow frustum is widened to cover the full height, or floors
+ * above the old 14 m box would have cast nothing.
+ */
+function Lights({ site }: { site: SiteDef }) {
+  const activeFloorId = useBuildingStore((s) => s.activeFloorId);
+  const theme = themeFor(site);
+  const topElevation = site.floors[site.floors.length - 1].elevation;
+  const activeIndex = Math.max(0, site.floors.findIndex((f) => f.id === activeFloorId));
+
   return (
     <>
-      <ambientLight intensity={0.55} color="#fff8e0" />
-      <hemisphereLight args={['#f6f0e4', '#a89a84', 0.7]} />
-      <directionalLight position={[-10, 8, 4]} intensity={1.3} color="#fff0d4" castShadow
+      {/*
+        Daylight, not a dark room.
+
+        The rig is built the way an exterior actually works: one hard sun doing
+        nearly all the modelling, a broad sky term filling the shadows from
+        above, and a bounce off the ground filling them from below. That is what
+        makes a scene read as outdoors — a shadow that is *blue* because the sky
+        is what fills it, not merely darker than the lit side.
+
+        The sun sits high and slightly to one side so the building's own
+        floors cast across each other and the depth of a deck is legible from
+        the shadow its ceiling throws.
+      */}
+      <hemisphereLight args={[theme.skyLight, theme.groundBounce, 0.8]} />
+      <ambientLight intensity={theme.ambientIntensity} color={theme.ambient} />
+      <directionalLight
+        position={[-22, topElevation + 26, 24]}
+        intensity={theme.sunIntensity}
+        color={theme.sunColor}
+        castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-near={0.1}
-        shadow-camera-far={60}
-        shadow-camera-left={-14}
-        shadow-camera-right={14}
-        shadow-camera-top={14}
-        shadow-camera-bottom={-14}
+        shadow-bias={-0.0006}
+        shadow-camera-near={0.5}
+        shadow-camera-far={160}
+        // Tight to the building. Widening this to cover the city spread the
+        // same 2048 map over four times the area and softened the one shadow
+        // that matters.
+        shadow-camera-left={-26}
+        shadow-camera-right={26}
+        shadow-camera-top={topElevation + 18}
+        shadow-camera-bottom={-10}
       />
-      <directionalLight position={[10,  5,  3]}  intensity={0.45} color="#c9d8e8" />
-      <directionalLight position={[0,   3, -10]} intensity={0.30} color="#ffb37a" />
-      <pointLight position={[-4, 5.2,   0]} intensity={0.5} distance={12} color="#fffbe8" />
-      <pointLight position={[ 0, 5.2,   0]} intensity={0.5} distance={12} color="#fffbe8" />
-      <pointLight position={[ 4, 5.2,   0]} intensity={0.5} distance={12} color="#fffbe8" />
-      <pointLight position={[-4, 5.2, -10]} intensity={0.5} distance={12} color="#fffbe8" />
-      <pointLight position={[ 4, 5.2, -10]} intensity={0.5} distance={12} color="#fffbe8" />
+      {/* A cool bounce from the open front, so the cutaway face is not flat. */}
+      <directionalLight position={[16, topElevation * 0.5, 30]} intensity={0.4} color={theme.skyLight} />
+
+      {site.floors.map((floor, i) => (
+        <group key={floor.id} position={[0, floor.elevation, 0]}>
+          {/*
+            Interior lamps, much dimmer than they were against a dark sky.
+
+            In daylight these are not what makes a floor visible — the sun is.
+            Their job is to warm the deck being looked at so it separates from
+            the ones above and below, and at the old intensity they blew it out.
+          */}
+          <pointLight
+            position={[0, 2.9, -6]}
+            intensity={i === activeIndex ? theme.lampIntensity * 2.6 : theme.lampIntensity}
+            distance={i === activeIndex ? 26 : 20}
+            color={theme.lampColor}
+          />
+        </group>
+      ))}
     </>
   );
 }
 
-function CameraRig() {
-  const { gl } = useThree();
-  const focusTarget = useStore((s) => s.focusTarget);
+/** Roughly a standing person's eye height above a slab. */
+const EYE_HEIGHT = 2.4;
 
-  const targetPos   = useRef(new THREE.Vector3(...CAMERA_OVERVIEW.position));
-  const targetLook  = useRef(new THREE.Vector3(...CAMERA_OVERVIEW.target));
-  const currentLook = useRef(new THREE.Vector3(...CAMERA_OVERVIEW.target));
+/** How far the view may swing off the cutaway face, radians. */
+const MAX_AZIMUTH = 1.26;
+
+/**
+ * How much of the driven worker's x the camera takes up. Full tracking made
+ * the building slide across the frame every time he stepped sideways; a
+ * fraction keeps him in shot without the structure appearing to move.
+ */
+const FOLLOW_X = 0.55;
+
+function CameraRig({ follow }: { follow: (() => { x: number; z: number; floorId: string } | null) | null }) {
+  const { gl } = useThree();
+  const site = useBuildingStore((s) => s.site);
+  const activeFloorId = useBuildingStore((s) => s.activeFloorId);
+  const framing = useMemo(() => buildingCamera(site), [site]);
+
+  const targetPos   = useRef(new THREE.Vector3(...BUILDING_CAMERA.position));
+  const targetLook  = useRef(new THREE.Vector3(...BUILDING_CAMERA.target));
+  const currentLook = useRef(new THREE.Vector3(...BUILDING_CAMERA.target));
 
   // Zoom (scroll wheel, overview only)
   const zoomRef = useRef(1.0);
 
-  // Spherical orbit orientation (drag to rotate, overview only)
-  // Initial values match CAMERA_OVERVIEW exactly:
-  //   base = [0,4.5,11], target = [0,1.2,-2], dir = [0,3.3,13], len ≈ 13.38
-  //   az = atan2(0,1) = 0,  el = asin(3.3/13.38) ≈ 0.249
+  // Spherical orbit around the active floor. The elevation starts nearly level
+  // so the camera looks INTO a floor rather than down onto its ceiling.
   const azimuthRef   = useRef(0);
-  const elevationRef = useRef(0.249);
-
-  // Always-current focusTarget for use inside event callbacks
-  const focusRef = useRef(focusTarget);
-  focusRef.current = focusTarget;
+  const elevationRef = useRef(0.10);
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -92,9 +144,21 @@ function CameraRig() {
       if (dragDist > 5) _dragState.wasDragging = true;
 
       // Only rotate in overview mode and once past small threshold
-      if (!focusRef.current && dragDist > 3) {
-        // Drag right = camera orbits right (shows left scene) → azimuth decreases
-        azimuthRef.current   -= dx * 0.005;
+      if (dragDist > 3) {
+        /*
+          Clamped, because there is nothing behind a cutaway.
+
+          The dollhouse dims every floor except the one in focus, so from
+          behind the building is five dark walls and no interior at all — the
+          dimming that makes the front readable is exactly what makes the back
+          useless. Orbiting far enough to lose the open face was never a view
+          worth having; ±72° gives the parallax that makes the stack read as
+          solid while keeping every floor's contents in sight.
+        */
+        azimuthRef.current = Math.max(
+          -MAX_AZIMUTH,
+          Math.min(MAX_AZIMUTH, azimuthRef.current - dx * 0.005),
+        );
         // Drag up (dy < 0) = camera elevates higher → elevation increases
         elevationRef.current  = Math.max(0.05, Math.min(1.2, elevationRef.current - dy * 0.004));
       }
@@ -104,7 +168,6 @@ function CameraRig() {
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (focusRef.current) return;
       zoomRef.current = Math.max(0.45, Math.min(2.2, zoomRef.current + e.deltaY * 0.0007));
     };
 
@@ -122,34 +185,50 @@ function CameraRig() {
   }, [gl]);
 
   useFrame(({ camera }) => {
-    const focus = focusTarget
-      ? CAMERA_FOCUS[focusTarget as keyof typeof CAMERA_FOCUS]
-      : null;
+    // Per-target focus (a worker's watch, a machine close-up) was a table of
+    // hand-placed camera positions for a fixed cast in a single room. Workers
+    // move now and there are sixty of them, so focus is rebuilt in Phase 2B
+    // against live agent positions rather than resurrected from a table.
+    {
+      /*
+        The camera rides the active floor, roughly at eye level with it.
 
-    const isWorkerFocus = focusTarget ? WORKER_DEFS.some(w => w.id === focusTarget) : false;
-
-    // Tighten near plane for watch closeup so the arm isn't clipped
-    const wantNear = isWorkerFocus ? 0.015 : 0.1;
-    if (camera.near !== wantNear) {
-      camera.near = wantNear;
-      camera.updateProjectionMatrix();
-    }
-
-    if (isWorkerFocus && watchFocusData.valid) {
-      // 0.55 units back along watch normal — far enough to show the whole wrist
-      const DIST = 0.55;
-      targetPos.current
-        .copy(watchFocusData.watchPos)
-        .addScaledVector(watchFocusData.watchNormal, DIST);
-      targetLook.current.copy(watchFocusData.watchPos);
-    } else if (focus) {
-      targetPos.current.set(...(focus.position as [number, number, number]));
-      targetLook.current.set(...(focus.target as [number, number, number]));
-    } else {
-      // Build camera position from spherical coordinates around the look target
-      const look    = new THREE.Vector3(...CAMERA_OVERVIEW.target);
-      const basePos = new THREE.Vector3(...CAMERA_OVERVIEW.position);
-      const dist    = basePos.distanceTo(look) * zoomRef.current;
+        Framing the whole stack from above looked correct in a still and was
+        useless in motion: viewed from above the mid-line, every floor's back
+        half is hidden by the slab above it, so half the workers were behind a
+        ceiling. Sitting level with the active floor opens it up completely,
+        and the floors above and below stay in frame as context — which is what
+        makes clicking one of them mean something.
+      */
+      /*
+        While somebody is being driven the camera follows him, because a
+        character you can walk out of frame is a character you lose. It follows
+        in x only and keeps the framing rules otherwise — swinging the whole
+        rig to chase him would throw away the dollhouse read that makes the
+        stack legible.
+      */
+      const driven = follow?.() ?? null;
+      const activeFloor =
+        site.floors.find((f) => f.id === (driven?.floorId ?? activeFloorId)) ??
+        site.floors[0];
+      /*
+        Tracking the active floor exactly put the building against the top of
+        the frame on floor 1 and the bottom on floor 6, with a third of the
+        viewport empty on the other side. Pulling the look-point partway back
+        toward the middle of the stack keeps the composition centred while
+        still moving nearly ten metres across the range — the camera visibly
+        rides the floor you picked, it just does not abandon the building.
+      */
+      const look = new THREE.Vector3(
+        driven ? driven.x * FOLLOW_X : framing.target[0],
+        THREE.MathUtils.lerp(
+          framing.stackMidHeight,
+          activeFloor.elevation + EYE_HEIGHT,
+          0.22,
+        ),
+        framing.target[2],
+      );
+      const dist = framing.distance * zoomRef.current;
 
       const az = azimuthRef.current;
       const el = elevationRef.current;
@@ -171,152 +250,108 @@ function CameraRig() {
   return null;
 }
 
-// ─── Wall machine wrapper (non-interactive, decorative) ─────────────────────
-function WallMachine({ def }: { def: typeof WALL_MACHINE_DEFS[0] }) {
-  return <Machine def={{ ...def, type: def.type }} />;
+/**
+ * Dev handle on the render tree, beside `__building` and `__sim`.
+ *
+ * Added because a frame-time regression could not be bisected from outside:
+ * without a way to hide one group and re-measure, diagnosing "what costs
+ * 12 ms" is guesswork, and I had already spent two wrong guesses on it.
+ */
+function DevSceneHandle() {
+  const { scene, gl } = useThree();
+  useEffect(() => {
+    (window as unknown as { __scene: unknown }).__scene = { scene, gl };
+    return () => {
+      delete (window as unknown as { __scene?: unknown }).__scene;
+    };
+  }, [scene, gl]);
+  return null;
 }
 
-// ─── Industrial props ────────────────────────────────────────────────────────
-function FactoryProps() {
-  return (
-    <group>
-      {/* ── Horizontal pipe run along back wall (high) ─────────────────── */}
-      <mesh position={[0, 4.8, -13.7]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.055, 0.055, 16, 8]} />
-        <meshStandardMaterial color="#6a7888" roughness={0.7} metalness={0.35} />
-      </mesh>
-      <mesh position={[0, 3.8, -13.7]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.04, 0.04, 14, 8]} />
-        <meshStandardMaterial color="#5a6878" roughness={0.7} metalness={0.3} />
-      </mesh>
+function SceneContents({
+  agents,
+  controlled,
+}: {
+  agents: Agents | null;
+  controlled: { index: number; name: string } | null;
+}) {
+  const site = useBuildingStore((s) => s.site);
+  const theme = themeFor(site);
+  // Read on the frame rather than passed as a value: his position changes
+  // sixty times a second and must never go through React.
+  const follow = useMemo(() => {
+    if (!agents || !controlled) return null;
+    return () => {
+      const state = agents.controlledState();
+      return state
+        ? { x: state.position.x, z: state.position.z, floorId: state.floorId }
+        : null;
+    };
+  }, [agents, controlled]);
 
-      {/* ── Pipe runs along right wall ──────────────────────────────────── */}
-      <mesh position={[7.92, 3.5, -7]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.05, 0.05, 14, 8]} />
-        <meshStandardMaterial color="#6a7888" roughness={0.7} metalness={0.3} />
-      </mesh>
-
-      {/* ── Storage barrel cluster (front-left corner) ──────────────────── */}
-      {([[-6.0, 0.42, -0.8], [-5.3, 0.42, -0.5], [-5.7, 0.42, -1.5]] as const).map(([x, y, z], i) => (
-        <group key={i} position={[x, y, z]}>
-          <mesh castShadow>
-            <cylinderGeometry args={[0.32, 0.30, 0.84, 14]} />
-            <meshStandardMaterial color={i === 0 ? '#3a6080' : i === 1 ? '#806040' : '#406030'} roughness={0.85} metalness={0.1} />
-          </mesh>
-          {/* Barrel lid */}
-          <mesh position={[0, 0.43, 0]}>
-            <cylinderGeometry args={[0.33, 0.33, 0.04, 14]} />
-            <meshStandardMaterial color="#2a2a2a" roughness={0.9} />
-          </mesh>
-          {/* Hazard stripe */}
-          <mesh position={[0, 0.05, 0]}>
-            <cylinderGeometry args={[0.305, 0.305, 0.08, 14]} />
-            <meshStandardMaterial color="#f0c020" roughness={0.85} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* ── Tool cabinet (right side, mid-factory) ──────────────────────── */}
-      <group position={[7.4, 0, -7.5]}>
-        <RoundedBox args={[0.55, 1.9, 0.45]} radius={0.04} position={[0, 0.95, 0]} castShadow>
-          <meshStandardMaterial color="#3050a0" roughness={0.88} metalness={0.05} />
-        </RoundedBox>
-        {/* Drawer handles */}
-        {[0.4, 0.8, 1.2, 1.6].map((y, i) => (
-          <mesh key={i} position={[-0.28, y, 0.24]}>
-            <boxGeometry args={[0.18, 0.03, 0.025]} />
-            <meshStandardMaterial color="#c8c8c8" roughness={0.5} metalness={0.6} />
-          </mesh>
-        ))}
-      </group>
-
-      {/* ── Fire extinguisher (front-right) ─────────────────────────────── */}
-      <group position={[7.6, 0, -1.5]}>
-        <mesh position={[0, 0.55, 0]} castShadow>
-          <cylinderGeometry args={[0.1, 0.1, 1.1, 12]} />
-          <meshStandardMaterial color="#cc2020" roughness={0.8} metalness={0.15} />
-        </mesh>
-        <mesh position={[0, 1.15, 0]}>
-          <cylinderGeometry args={[0.06, 0.1, 0.15, 12]} />
-          <meshStandardMaterial color="#cc2020" roughness={0.8} metalness={0.15} />
-        </mesh>
-      </group>
-
-      {/* ── Warning floor stripe around reactor area ─────────────────────── */}
-      {([-3.0, -3.5, -4.0, -4.5, -5.0, -9.0, -9.5, -10.0, -10.5, -11.0] as const).map((z, i) => (
-        <mesh key={i} position={[0, 0.003, z]} receiveShadow>
-          <planeGeometry args={[6.5, 0.06]} />
-          <meshStandardMaterial
-            color={i % 2 === 0 ? '#f0c020' : '#1a1a1a'}
-            roughness={0.95}
-            side={2}
-          />
-        </mesh>
-      ))}
-
-      {/* ── Ceiling cable trays (overhead, between lights) ───────────────── */}
-      <mesh position={[-2.0, 5.7, -7]}>
-        <boxGeometry args={[0.3, 0.08, 8]} />
-        <meshStandardMaterial color="#3a4a5a" roughness={0.85} metalness={0.3} />
-      </mesh>
-      <mesh position={[2.0, 5.7, -7]}>
-        <boxGeometry args={[0.3, 0.08, 8]} />
-        <meshStandardMaterial color="#3a4a5a" roughness={0.85} metalness={0.3} />
-      </mesh>
-    </group>
-  );
-}
-
-function SceneContents() {
   return (
     <>
-      <Lights />
-      <CameraRig />
-      <Floor />
-      <Walls />
-      <Ceiling />
-      <Stairs />
-      <FactoryProps />
-      {/* Conveyor belt with animated packages + overhead scanner */}
-      <ConveyorBelt position={[3.0, 0, -2.5]} length={4.2} />
-      {/* Second shorter conveyor near back-left area */}
-      <ConveyorBelt position={[-2.0, 0, -12.8]} rotationY={Math.PI / 2} length={2.8} />
-      <AdminStation />
-      {/* Simulation workers (with smartwatches + alert routing) */}
-      {WORKER_DEFS.map((def) => (
-        <Worker key={def.id} def={def} />
-      ))}
-      {/* Central simulation machine */}
-      {MACHINE_DEFS.map((def) => (
-        <Machine key={def.id} def={def} />
-      ))}
-      {/* Wall machines (decorative — visually match factory but no alert interaction) */}
-      {WALL_MACHINE_DEFS.map((def) => (
-        <WallMachine key={def.id} def={def} />
-      ))}
-      {/* Decorative workers around wall machines + on stairs/mezzanine */}
-      {DECO_WORKER_DEFS.map((def) => (
-        <DecoWorker key={def.id} def={def} />
-      ))}
-      <AlertOrb />
+      <color attach="background" args={[theme.sky]} />
+      {/* Fog to the theme's haze rather than the sky, so distant blocks fade
+          into atmosphere instead of dissolving into the backdrop. */}
+      <fog attach="fog" args={[theme.haze, 70, 240]} />
+      <SceneEnvironment intensity={theme.envIntensity} />
+      <Lights site={site} />
+      <CameraRig follow={follow} />
+      {/*
+        The building replaces the single-room factory entirely. Until agents
+        exist — the setup screen has not finished provisioning — the site is
+        still drawn, so the scene is never blank while sixty accounts register.
+      */}
+      <DevSceneHandle />
+      <Surroundings site={site} />
+      <Building site={site} agents={agents} controlled={controlled} />
+      <PostFx />
     </>
   );
 }
 
-export function Scene() {
-  const setFocus = useStore((s) => s.setFocus);
+export function Scene({
+  agents,
+  controlled,
+}: {
+  agents: Agents | null;
+  controlled: { index: number; name: string } | null;
+}) {
   return (
     <Canvas
-      shadows
-      camera={{ position: CAMERA_OVERVIEW.position as [number,number,number], fov: 58, near: 0.1, far: 120 }}
-      gl={{ antialias: true, alpha: false }}
-      style={{ background: '#c8b498', width: '100%', height: '100%' }}
+      camera={{ position: BUILDING_CAMERA.position as [number,number,number], fov: 58, near: 0.1, far: 260 }}
+      /*
+        Tone mapping is the single largest visual change available here.
+
+        Without it three.js writes linear radiance straight to an 8-bit
+        buffer, so anything the lights push past 1.0 clips to flat white and
+        everything below sits in a narrow, chalky band — which is most of why
+        a lit scene reads as "computer graphics". ACES filmic rolls the
+        highlights off instead of cutting them, and the exposure is set below 1
+        because the rig is deliberately bright: the lit deck should be the
+        brightest thing in frame, not the only thing that survives.
+      */
+      gl={{
+        antialias: true,
+        alpha: false,
+        toneMapping: THREE.ACESFilmicToneMapping,
+        // Per theme: the two worlds are lit differently and want different
+        // exposure. Read once at mount, which is when the site is already
+        // chosen, and the canvas is not rebuilt mid-session.
+        toneMappingExposure: themeFor(useBuildingStore.getState().site).exposure,
+      }}
+      shadows={{ type: THREE.PCFSoftShadowMap }}
+      style={{
+        background: themeFor(useBuildingStore.getState().site).sky,
+        width: '100%',
+        height: '100%',
+      }}
       onPointerMissed={() => {
-        if (!_dragState.wasDragging) setFocus(null);
         _dragState.wasDragging = false;
       }}
     >
-      <SceneContents />
+      <SceneContents agents={agents} controlled={controlled} />
     </Canvas>
   );
 }

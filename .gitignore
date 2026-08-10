@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test coverage output
+coverage
+
+# Playwright MCP scratch output
+.playwright-mcp
+
+# Impeccable hook cache
+.impeccable
