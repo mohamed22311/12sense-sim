@@ -21,7 +21,7 @@ import type { ApiEvent, WsMessage } from '@/api/types';
 import type { ProvisionedSession, ProvisionedWorker } from '@/net/provisioning';
 import { connectPhoneSocket } from '@/net/wsClient';
 import { refreshWorkerToken, type RefreshTokenFn } from '@/net/auth';
-import { postIndividualAlert, postResponse } from '@/phone/outbox';
+import { postHealthAlertEvent, postIndividualAlert, postResponse } from '@/phone/outbox';
 import type { IndividualAlertBody, ResponseBody, ResponseResult } from '@/phone/outbox';
 import { VirtualPhone, type PhoneContext } from '@/phone/VirtualPhone';
 import { INITIAL_SPO2, VitalsBuffer } from '@/phone/vitalsBuffer';
@@ -84,6 +84,8 @@ export type FleetDeps = {
   ) => Promise<{ id: string } | null>;
   /** overridable so tests never touch the network; defaults to the real /auth/refresh call */
   refreshToken?: RefreshTokenFn;
+  /** overridable in tests; defaults to the real lifecycle POST */
+  postHealthAlertEvent?: typeof postHealthAlertEvent;
   vitalsTickMs?: number;
 };
 
@@ -212,6 +214,7 @@ export class Fleet {
   ): VirtualPhone {
     const sendResponse = this.deps.postResponse ?? postResponse;
     const sendIndividualAlert = this.deps.postIndividualAlert ?? postIndividualAlert;
+    const sendHealthEvent = this.deps.postHealthAlertEvent ?? postHealthAlertEvent;
 
     return new VirtualPhone({
       worker,
@@ -224,6 +227,20 @@ export class Fleet {
       // this worker's current token, so a refresh reaches reporting too.
       postResponse: (_token, eventId, body) => sendResponse(token.get(), eventId, body),
       postIndividualAlert: (_token, body) => sendIndividualAlert(token.get(), body),
+      /*
+        The worker answering a health alert. `alertId` is null when the raise
+        POST did not come back with one — a report with no alert to attach to
+        is dropped rather than guessed at, because the server resolves the
+        alert from the path id and there is nothing safe to put there.
+
+        `app_screen` is the surface: in the simulator the worker answers on the
+        watch face, which is the in-app screen rather than a notification
+        action or a lock-screen alarm.
+      */
+      reportHealthAck: async (_token, alertId, occurredAt) => {
+        if (!alertId) return;
+        await sendHealthEvent(token.get(), alertId, 'acknowledged', occurredAt, 'app_screen');
+      },
     });
   }
 

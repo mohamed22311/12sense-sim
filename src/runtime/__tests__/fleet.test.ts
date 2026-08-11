@@ -265,3 +265,104 @@ describe('Fleet', () => {
     fleet.stop();
   });
 });
+
+describe('Fleet — health alert acknowledgement', () => {
+  /**
+   * `POST /individual-alerts/{id}/events` shipped in S3-BE7. The simulator had
+   * carried an optional hook for it that nothing ever provided, so a worker's
+   * answer never left the browser and the dashboard's health ack-latency
+   * stayed empty. These pin the wiring, because the failure was silent: no
+   * error, no rejected promise, just a report that never happened.
+   */
+  const base = () => ({
+    frame: FRAME,
+    getContext: () => ({
+      position: { x: 0, z: 0 }, floor: '1', moving: false, noiseDbFs: -40,
+      noiseAgeMs: 0, gpsAgeMs: 0, stepsReadable: true,
+    }),
+    connect: () => ({ start() {}, stop() {}, kick() {} }),
+  });
+
+  it('reports an acknowledgement against the alert the server issued', async () => {
+    const sent: unknown[] = [];
+    const fleet = new Fleet({
+      ...base(),
+      postIndividualAlert: async () => ({ id: 'server-alert-1' }),
+      postHealthAlertEvent: async (token, alertId, action, occurredAt, surface) => {
+        sent.push({ token, alertId, action, occurredAt, surface });
+        return { id: 'evt-1' };
+      },
+    });
+    fleet.start(session, [worker(1)]);
+
+    const phone = fleet.phoneFor(1)!;
+    // Stand in for a raise, so the test exercises the reporting path rather
+    // than the risk engine, which has its own tests.
+    phone.lastHealthAlert = {
+      band: 'danger',
+      title: 'Danger — stop and rest now',
+      reason: 'because',
+      hr: 150,
+      spo2: 96,
+      at: 1,
+      raisedAt: '2026-08-11T09:00:00.000Z',
+      delivery: {
+        variant: 'alarm', sound: true, vibrate: true,
+        headsUp: true, fullScreen: true, insistent: true, inAppOpen: true,
+      },
+      alertId: 'server-alert-1',
+      acknowledged: false,
+    };
+
+    await phone.acknowledgeHealth(Date.parse('2026-08-11T09:02:00.000Z'));
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      alertId: 'server-alert-1',
+      action: 'acknowledged',
+      occurredAt: '2026-08-11T09:02:00.000Z',
+      // The worker answered on the watch face, which is the in-app screen.
+      surface: 'app_screen',
+    });
+    expect(phone.lastHealthAlert?.acknowledged).toBe(true);
+    fleet.stop();
+  });
+
+  it('drops the report when the raise never got an id, rather than guessing one', async () => {
+    // The server resolves the alert from the path id. With no id there is
+    // nothing safe to put there, and inventing one would post against another
+    // worker's alert or 404 — so the local answer stands alone.
+    const sent: unknown[] = [];
+    const fleet = new Fleet({
+      ...base(),
+      postIndividualAlert: async () => null,
+      postHealthAlertEvent: async (...args) => {
+        sent.push(args);
+        return null;
+      },
+    });
+    fleet.start(session, [worker(1)]);
+
+    const phone = fleet.phoneFor(1)!;
+    phone.lastHealthAlert = {
+      band: 'caution',
+      title: 'Caution — elevated strain',
+      reason: 'because',
+      hr: 130, spo2: 97, at: 1,
+      raisedAt: '2026-08-11T09:00:00.000Z',
+      delivery: {
+        variant: 'high', sound: false, vibrate: true,
+        headsUp: true, fullScreen: false, insistent: false, inAppOpen: true,
+      },
+      alertId: null,
+      acknowledged: false,
+    };
+
+    await phone.acknowledgeHealth(Date.now());
+
+    expect(sent).toHaveLength(0);
+    // The worker still sees their own answer, which is the point.
+    expect(phone.lastHealthAlert?.acknowledged).toBe(true);
+    fleet.stop();
+  });
+});

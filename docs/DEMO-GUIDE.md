@@ -160,7 +160,8 @@ because haptic is the safety floor. The worker answers with **"Got it — I'm
 resting"**.
 
 Nothing here faked an alert; it made one true, and then showed the worker
-exactly what a real phone would show them.
+exactly what a real phone would show them — and their answer reaches the
+dashboard, where it lands as an acknowledgement with a real ack latency.
 
 **g. Clear up.** **End and clear the data** purges the tenant and reports what
 was removed.
@@ -180,6 +181,16 @@ From the dispatcher side, the same event showed `tracked: 60`,
 
 ---
 
+## 6b. One dispatcher setting that will hide the whole demo
+
+`GET /events` gained a `simulated` filter. **Everything the simulator raises is
+`source=sim`**, so a console viewing with `simulated=false` shows nothing at
+all — verified on the live tenant: no filter returns the event, `simulated=false`
+returns zero.
+
+If the dispatcher looks empty during a demo, check that filter before checking
+anything else. It is the one setting that makes a working system look broken.
+
 ## 7. Limitations — the honest list
 
 These are things I would not want you to discover in front of a client.
@@ -195,12 +206,10 @@ These are things I would not want you to discover in front of a client.
   analytics-only: an episode ends `acknowledged` or `auto_recovered`, never
   both, so the only action on the watch is "Got it — I'm resting". That is the
   product's design, not a gap.
-- **The health lifecycle endpoint is still a proposal.** The app posts
-  acknowledgements to `POST /individual-alerts/{id}/events` and treats
-  404/405/501 as terminal, dropping the record. The simulator does the same, so
-  the worker's answer always shows locally whatever the server has shipped —
-  but do not promise the *dashboard* will show a health ack latency until that
-  endpoint lands.
+- **A health alert cannot be answered twice, or answered two ways.** An episode
+  ends `acknowledged` or `auto_recovered`, never both. A second, different
+  terminal is recorded in the audit log but changes nothing and comes back 409
+  naming the winner. Repeating the *same* answer is a no-op replay, by design.
 
 ### Constraints of the simulator
 
@@ -235,6 +244,10 @@ Recorded because they appear in older notes:
   *product*, not just the simulator: the app has always woken the worker for
   them. The watch now shows the same alert with the app's own titles, its own
   delivery channels and its own "Got it — I'm resting" action.
+- The health acknowledgement used to stop at the browser. The endpoint it needs
+  shipped (S3-BE7) and the simulator now posts to it, so acknowledging on the
+  watch reaches the dashboard. Verified live: `acknowledged: 1` and
+  `median_ack_latency_s: 120` on the analytics summary.
 
 ### Things that are simply not built yet
 

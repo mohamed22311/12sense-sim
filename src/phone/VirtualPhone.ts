@@ -124,10 +124,11 @@ export type PhoneDeps = {
   /**
    * Report that the worker acknowledged a health alert.
    *
-   * Optional because the endpoint is still a proposal — the app itself treats
-   * 404/405/501 as terminal and drops the record, so the local half has to work
-   * whatever the server has shipped. A simulator that broke when it 404s would
-   * be stricter than the product.
+   * `POST /individual-alerts/{id}/events` is live as of S3-BE7 and the fleet
+   * wires this for real. It stays optional so a phone can be constructed
+   * without a network in tests — and it never rejects, because it runs from a
+   * UI click and a failed report must not stop the watch showing the worker
+   * their own answer.
    */
   reportHealthAck?: (
     token: string,

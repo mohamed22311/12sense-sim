@@ -74,6 +74,13 @@ the one thing the simulator cannot drive for a real handset.
 Press **End and clear the data**. Without it, the next demo's analytics include
 this one's events and acknowledgement rates.
 
+## If the dispatcher looks empty
+
+`GET /events` has a `simulated` filter, and everything the simulator raises is
+`source=sim`. A console set to `simulated=false` shows **nothing**. Check that
+before you check anything else — it is the one setting that makes a working
+system look broken.
+
 ## Two things not to promise
 
 - **The first acknowledgement resolves the alert for everyone.** You cannot

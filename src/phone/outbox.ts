@@ -96,6 +96,45 @@ export type IndividualAlertBody = {
  * raises nothing. A failure here must never disturb the demo, so it is
  * swallowed and reported as null rather than thrown into the tick loop.
  */
+/**
+ * Report what the worker did with a health alert.
+ *
+ * `POST /individual-alerts/{id}/events` shipped in S3-BE7 and is live — the
+ * simulator carried an optional hook for it that was never wired, on the
+ * belief it was still a proposal, so a worker's acknowledgement never left the
+ * browser and the dashboard's health ack-latency stayed empty.
+ *
+ * The statuses are all expected outcomes rather than faults: 200 is a replay
+ * of a `client_event_id` the server already has, 404 is an alert this worker
+ * does not own, and 409 means the episode already ended the other way — the
+ * server records the row and names the winner. An alert ends `acknowledged`
+ * or `auto_recovered`, never both, and that rule is the server's to enforce.
+ */
+export async function postHealthAlertEvent(
+  token: string,
+  alertId: string,
+  action: 'viewed' | 'acknowledged' | 'auto_recovered',
+  occurredAt: string,
+  surface: 'notification' | 'alarm_screen' | 'app_screen' | null = null,
+): Promise<{ id: string } | null> {
+  try {
+    return await apiRequest<{ id: string }>('POST', `/individual-alerts/${alertId}/events`, {
+      token,
+      body: {
+        client_event_id: newClientEventId(),
+        action,
+        occurred_at: occurredAt,
+        // Omitted for auto_recovered, which has no surface.
+        ...(surface === null ? {} : { surface }),
+      },
+    });
+  } catch {
+    // Never throws into the caller: this runs from a UI click, and a failed
+    // report must not stop the watch showing the worker their own answer.
+    return null;
+  }
+}
+
 export async function postIndividualAlert(
   token: string,
   body: IndividualAlertBody,
