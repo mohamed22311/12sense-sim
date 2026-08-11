@@ -82,3 +82,55 @@ describe('newClientEventId', () => {
     expect(a).not.toBe(newClientEventId());
   });
 });
+
+/**
+ * A fetch that never answers but does honour the abort signal, the way the
+ * real one does. Without the rejection the request simply hangs and the test
+ * times out instead of exercising anything.
+ */
+const hangingFetch = () =>
+  vi.fn((_url: string, init?: { signal?: AbortSignal }) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) return;
+      if (signal.aborted) {
+        reject(new DOMException('signal is aborted without reason', 'AbortError'));
+        return;
+      }
+      signal.addEventListener('abort', () => {
+        reject(new DOMException('signal is aborted without reason', 'AbortError'));
+      });
+    }),
+  );
+
+describe('apiRequest — timeouts', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports a timeout as an unknown outcome, not a failure', async () => {
+    // The request may well have been served and only the answer lost. Calling
+    // that "failed" leads an operator to raise a second real alert as a retry.
+    vi.stubGlobal('fetch', hangingFetch());
+
+    await expect(
+      apiRequest('POST', '/simulations/events', { timeoutMs: 20 }),
+    ).rejects.toMatchObject({
+      code: 'timeout',
+      message: expect.stringContaining('may still have gone through'),
+    });
+  });
+
+  it('does not dress a caller cancellation up as a timeout', async () => {
+    // An aborted signal from the caller is a different event with a different
+    // meaning — the caller already knows why, and it did not time out.
+    vi.stubGlobal('fetch', hangingFetch());
+    const controller = new AbortController();
+    const inflight = apiRequest('GET', '/events', {
+      signal: controller.signal,
+      timeoutMs: 10_000,
+    });
+    controller.abort();
+    await expect(inflight).rejects.not.toMatchObject({ code: 'timeout' });
+  });
+});

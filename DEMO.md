@@ -61,13 +61,18 @@ the one thing the simulator cannot drive for a real handset.
    what *that phone* decided, not what the server sent.
 3. **Raise a real alert** — click a machine, press **Raise alert**. It offers
    only faults that machine could actually have.
-4. **The line that lands** — *60 received it, 10 alarmed, 50 did not — and some
-   of those 50 were 2.2 m away.* They were on other floors, and each phone
-   decided that itself. Open the dispatcher: same numbers.
+4. **The line that lands** — the **Alert reach** panel appears as soon as you
+   raise one: how many alarmed, how many were on another floor, and how close
+   the nearest silent worker was. *Some of them are metres away and correctly
+   hear nothing, because they are a storey up.* Each phone decided that
+   itself. Open the dispatcher: same numbers.
 5. **Acknowledge** — the event resolves and the latency is recorded.
 6. **Health** — pick a worker who is calm, drag heart rate to ~150, **Send to
    the watch**. Their watch wakes with *"Danger — stop and rest now"* and they
-   answer *"Got it — I'm resting"*.
+   answer *"Got it — I'm resting"*, which reaches the dashboard as a real ack
+   latency.
+7. **Offboard** — *"Offboard this worker"* revokes them everywhere at once and
+   their phone leaves the fleet. History stays.
 
 ## Afterwards
 

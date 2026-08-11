@@ -134,7 +134,13 @@ offers only alerts that machine could actually raise: a press offers "light
 curtain broken during stroke", a chiller offers "refrigerant pressure high".
 The result screen reports what the server did.
 
-**d. The line that lands.** On the alert I raised as a test:
+**d. The line that lands.** The **Alert reach** panel appears the moment you
+raise one, and it is the demo's whole argument in three numbers: how many
+alarmed, how many were on another floor, how many were beyond the radius — and
+the distance to the nearest worker who stayed silent. On a live test it read
+*3 of 7 alarmed, 4 on another floor, nearest silent 2.8 m away.*
+
+On a full sixty-worker session the same panel showed:
 
 > **60 phones received it. 10 alarmed. 50 did not — and some of those 50 were
 > 2.2 metres away.**
@@ -163,7 +169,13 @@ Nothing here faked an alert; it made one true, and then showed the worker
 exactly what a real phone would show them — and their answer reaches the
 dashboard, where it lands as an acknowledgement with a real ack latency.
 
-**g. Clear up.** **End and clear the data** purges the tenant and reports what
+**g. Offboard someone.** Open any worker and press **Offboard this worker**.
+The server revokes them at all four surfaces at once — token, login, refresh
+and the socket they are holding — and the simulator drops their phone from the
+fleet. Their history stays: the server changes a status rather than deleting a
+row, so the alerts they already answered still say so.
+
+**h. Clear up.** **End and clear the data** purges the tenant and reports what
 was removed.
 
 ---

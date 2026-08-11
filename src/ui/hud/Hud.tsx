@@ -7,6 +7,7 @@ import { useBuildingStore } from '@/state/buildingStore';
 import { MachineDialog } from '@/ui/hud/MachineDialog';
 import { WorkerPanel, type WorkerSample } from '@/ui/hud/WorkerPanel';
 import { EndSession } from '@/ui/hud/EndSession';
+import { ReachPanel, type ReachBreakdown } from '@/ui/hud/ReachPanel';
 import type { VirtualPhone } from '@/phone/VirtualPhone';
 import type { VitalsBuffer } from '@/phone/vitalsBuffer';
 
@@ -60,6 +61,11 @@ export type WorkerAccess = {
   };
   /** The worker answered a health alert. */
   acknowledgeHealth(index: number): Promise<void>;
+  /**
+   * Remove this worker from the company. Null in `?preview` and for any worker
+   * whose server id is unknown — there is nothing to offboard.
+   */
+  offboard(index: number): (() => Promise<{ devices_removed: number; sockets_closed: number }>) | null;
 };
 
 export type HudProps = {
@@ -177,6 +183,7 @@ export function Hud({
   const [floors, setFloors] = useState<FloorSample[]>([]);
   const [headcount, setHeadcount] = useState(0);
   const [worker, setWorker] = useState<WorkerSample | null>(null);
+  const [reach, setReach] = useState<ReachBreakdown | null>(null);
 
   /*
     Drop alerts the server has resolved.
@@ -302,6 +309,55 @@ export function Hud({
     return () => clearInterval(timer);
   }, [agents, site, workers, selectedWorkerIndex]);
 
+  /*
+    Aggregate what each phone decided about the most recent alert.
+
+    Sampled on the same timer as everything else rather than pushed: the
+    verdicts land over a second or two as sixty sockets deliver, and a panel
+    that re-rendered on each arrival would count up in front of the audience
+    instead of settling on an answer.
+  */
+  useEffect(() => {
+    if (openAlerts.length === 0) {
+      setReach(null);
+      return;
+    }
+    const newest = openAlerts[openAlerts.length - 1].eventId;
+
+    const sample = () => {
+      let received = 0;
+      let alarmed = 0;
+      let wrongFloor = 0;
+      let tooFar = 0;
+      let nearestSilent: number | null = null;
+
+      for (const state of agents?.all() ?? []) {
+        const verdict = workers.phone(state.index)?.lastVerdict;
+        if (!verdict || verdict.eventId !== newest) continue;
+        received += 1;
+        if (verdict.popped) {
+          alarmed += 1;
+          continue;
+        }
+        // The floor gate is checked first because it is the more specific
+        // reason: a phone on another floor is excluded regardless of range,
+        // and reporting it as "too far" would tell the wrong story.
+        if (verdict.floorGate === 'mismatch') wrongFloor += 1;
+        else tooFar += 1;
+        if (verdict.distanceM !== null) {
+          nearestSilent =
+            nearestSilent === null ? verdict.distanceM : Math.min(nearestSilent, verdict.distanceM);
+        }
+      }
+
+      setReach(received === 0 ? null : { received, alarmed, wrongFloor, tooFar, nearestSilent });
+    };
+
+    sample();
+    const timer = setInterval(sample, SAMPLE_MS);
+    return () => clearInterval(timer);
+  }, [openAlerts, agents, workers]);
+
   const busiest = floors.reduce((max, f) => Math.max(max, f.headcount), 0);
   const selectedMachine = selectedMachineId ? machinesById.get(selectedMachineId) : undefined;
   const alertingMachines = openAlerts
@@ -344,6 +400,7 @@ export function Hud({
             }
             onMoveToFloor={onMoveControlledToFloor}
             floors={site.floors.map((f) => ({ id: f.id, label: f.label }))}
+            onOffboard={workers.offboard(worker.index) ?? undefined}
             onClose={() => selectWorker(null)}
           />
         )}
@@ -356,8 +413,8 @@ export function Hud({
           </p>
           <p className="hud-card-note">
             {adminToken
-              ? 'Each carries a phone running the app’s own decision code.'
-              : 'Preview — the simulation runs, no accounts exist.'}
+              ? 'Each runs the app’s own decision code.'
+              : 'Preview — no accounts exist.'}
           </p>
         </section>
 
@@ -390,6 +447,8 @@ export function Hud({
             })}
           </ul>
         </section>
+
+        {reach && <ReachPanel reach={reach} />}
 
         <section className="hud-card">
           <h2 className="hud-card-title">
@@ -450,10 +509,7 @@ export function Hud({
             {placingAnchor ? 'Click a floor to place it' : 'Move the anchor'}
           </button>
           {placingAnchor && (
-            <p className="hud-card-note">
-              The next click on a floor puts it there. Every phone reports its
-              position against this point from that moment on.
-            </p>
+            <p className="hud-card-note">Next click on a floor puts it there.</p>
           )}
 
           {/*
@@ -475,8 +531,8 @@ export function Hud({
           </button>
           {controlledIndex === null && (
             <p className="hud-card-note">
-              Take control of a worker first — this pins the site’s origin to
-              him, which is how a real phone feels him move.
+              Take control of a worker first — this is how a real phone feels
+              him move.
             </p>
           )}
 

@@ -52,6 +52,14 @@ export async function raiseAlert(
   return apiRequest<RaiseAlertResult>('POST', '/simulations/events', {
     token: adminToken,
     signal,
+    /*
+      Longer than the default. This one write ingests the event, seeds a row
+      per active worker and fans out to every connected socket before it
+      answers — so it is inherently slower than a read, and it timed out twice
+      at 20s against a server that had just restarted. A demo raising an alert
+      wants patience rather than a retry, because a retry is a second alert.
+    */
+    timeoutMs: 45_000,
     body: {
       asset_id: input.assetId,
       asset_label: input.assetLabel,
@@ -181,3 +189,34 @@ export const ALERT_TYPES: Record<
 
 /** The alert radius, in metres, the dialog opens on. */
 export const DEFAULT_ALERT_RADIUS_M = 75;
+
+/** What `POST /team/{id}/offboard` did. */
+export type OffboardResult = {
+  member: { id: string; status: string };
+  devices_removed: number;
+  sockets_closed: number;
+};
+
+/**
+ * Remove a worker who has left.
+ *
+ * Deliberately not a delete, server-side: every foreign key into `users` is
+ * CASCADE or SET NULL, so removing the row would take their append-only audit
+ * with it and leave an alert they acknowledged looking like one that resolved
+ * itself. It sets their status instead, drops their push registrations and
+ * closes any socket they hold — and the status is then refused at all four
+ * surfaces that admit a caller, so access ends now rather than whenever their
+ * tokens expire.
+ *
+ * Idempotent: a second call reports zeros, which is what makes that visible.
+ */
+export async function offboardWorker(
+  userId: string,
+  adminToken: string,
+  signal?: AbortSignal,
+): Promise<OffboardResult> {
+  return apiRequest<OffboardResult>('POST', `/team/${userId}/offboard`, {
+    token: adminToken,
+    signal,
+  });
+}

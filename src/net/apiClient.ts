@@ -63,7 +63,19 @@ export async function apiRequest<T>(
   { body, token, timeoutMs = DEFAULT_TIMEOUT_MS, signal }: RequestOptions = {},
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  /*
+    Distinguish our own timeout from a caller's cancellation.
+
+    `AbortController.abort()` produces "signal is aborted without reason",
+    which is what an operator saw when a slow server ate a raise: a message
+    that names no cause, no consequence and no next step. Recording which of
+    the two fired lets the catch below say something true instead.
+  */
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort);
   if (signal?.aborted) controller.abort();
@@ -114,6 +126,23 @@ export async function apiRequest<T>(
     }
 
     return data as T;
+  } catch (error) {
+    if (timedOut) {
+      /*
+        A timeout is not a failure — it is an unknown.
+
+        The request may well have been served: the alert raised, the sixty
+        rows written, and only the answer lost. Reporting it as "failed" leads
+        an operator to raise it again, and the second one is a second real
+        alert rather than a retry. Say what is actually known.
+      */
+      throw new ApiError(
+        `No answer from the server within ${Math.round(timeoutMs / 1000)}s. ` +
+          'It may still have gone through — check before trying again.',
+        { code: 'timeout', status: 0 },
+      );
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);

@@ -11,6 +11,7 @@ import { Hud, type WorkerAccess } from '@/ui/hud/Hud';
 import { workerIdentity } from '@/net/provisioning';
 import type { ProvisionedSession, ProvisionedWorker } from '@/net/provisioning';
 import { createHealthWatch, type HealthWatch } from '@/phone/healthWatch';
+import { offboardWorker } from '@/net/alerts';
 import './styles/global.css';
 
 /** How many workers `?preview` populates the building with. */
@@ -223,13 +224,26 @@ export default function App() {
             : null,
         };
       },
+      offboard: (index) => {
+        const worker = roster.find((w) => w.index === index);
+        const token = session?.adminAccessToken;
+        if (!worker || !token) return null;
+        return async () => {
+          const result = await offboardWorker(worker.userId, token);
+          // Their phone is finished: the server closed the socket and will
+          // refuse every future call, so keeping it in the fleet would leave a
+          // client retrying against an account that is gone.
+          fleet?.retire(index);
+          return result;
+        };
+      },
       acknowledgeHealth: async (index) => {
         const phone = fleet?.phoneFor(index);
         if (phone) await phone.acknowledgeHealth(Date.now());
         else healthWatch?.acknowledge(index);
       },
     }),
-    [fleet, previewBuffers, roster, healthWatch],
+    [fleet, previewBuffers, roster, healthWatch, session],
   );
 
   /*

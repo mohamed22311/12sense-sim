@@ -244,6 +244,27 @@ export class Fleet {
     });
   }
 
+  /**
+   * Take one worker out of the fleet for good.
+   *
+   * Used when a worker is offboarded: the server has closed their socket and
+   * will refuse every future call from them at all four surfaces. Leaving the
+   * record in place would have a client reconnecting and reporting against an
+   * account that is gone — retrying its way to a permanent 403 and, worse,
+   * still appearing in the roster the console counts.
+   *
+   * Their history is untouched, here and on the server. This removes a live
+   * client, not a person.
+   */
+  retire(index: number): void {
+    const record = this.records.get(index);
+    if (!record) return;
+    record.socket.stop();
+    this.records.delete(index);
+    this.tokens.delete(index);
+    this.order = this.order.filter((i) => i !== index);
+  }
+
   stop(): void {
     this.scheduler?.stop();
     this.scheduler = null;

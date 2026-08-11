@@ -94,6 +94,30 @@ const HEALTH_TITLE: Record<'caution' | 'danger', string> = {
   danger: 'Danger — stop and rest now',
 };
 
+/**
+ * What this phone decided about the last group alert it was handed.
+ *
+ * Recorded for display only — nothing reads it back into a decision. It exists
+ * because the gate's verdict *is* the product's argument, and until now the
+ * only way to see it was to query the server afterwards: sixty phones each
+ * decided on their own floor and position, and the screen showed none of it.
+ *
+ * Both gates are kept rather than a single boolean, because "too far" and
+ * "wrong floor" are completely different stories to tell — the second is the
+ * one that surprises people, since a worker four metres away in plan can be a
+ * storey up and correctly hear nothing.
+ */
+export type PhoneVerdict = {
+  eventId: string;
+  /** the phone alarmed */
+  popped: boolean;
+  distanceM: number | null;
+  floorGate: string;
+  gpsGate: string;
+  /** the worker's own floor when the alert arrived */
+  workerFloor: string | null;
+};
+
 export type PhoneAlert = {
   event: ApiEvent;
   modality: Modality;
@@ -142,6 +166,8 @@ export class VirtualPhone {
   riskBand: RiskBand = 'normal';
   /** The most recent raise, for display. Never read by any decision. */
   lastHealthAlert: PhoneHealthAlert | null = null;
+  /** How this phone judged the last group alert. Display only. */
+  lastVerdict: PhoneVerdict | null = null;
   /**
    * The most recent error a reporting POST raised. `handleEvent`/`ack`/
    * `reject`/`snooze` run from a WebSocket handler and UI callbacks, so a
@@ -229,6 +255,15 @@ export class VirtualPhone {
 
     const verdict = decideProximity(input);
     const snapshot = proximityContextSnapshot(input, verdict);
+
+    this.lastVerdict = {
+      eventId: event.id,
+      popped: verdict.shouldPop,
+      distanceM: verdict.distanceM,
+      floorGate: verdict.floorGate,
+      gpsGate: verdict.gpsGate,
+      workerFloor: ctx.floor,
+    };
 
     if (!verdict.shouldPop) {
       this.seen.add(event.id);

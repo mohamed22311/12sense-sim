@@ -68,6 +68,11 @@ export type WorkerPanelProps = {
   onToggleControl(): void;
   onMoveToFloor(floorId: string): void;
   floors: ReadonlyArray<{ id: string; label: string }>;
+  /**
+   * Remove this worker from the company. Absent in `?preview`, where there is
+   * no tenant and nobody to remove.
+   */
+  onOffboard?: () => Promise<{ devices_removed: number; sockets_closed: number }>;
   onClose(): void;
 };
 
@@ -101,6 +106,7 @@ export function WorkerPanel({
   onToggleControl,
   onMoveToFloor,
   floors,
+  onOffboard,
   onClose,
 }: WorkerPanelProps) {
   const [hr, setHr] = useState(sample.hr ?? 78);
@@ -110,11 +116,15 @@ export function WorkerPanel({
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOffboard, setConfirmOffboard] = useState(false);
+  const [offboarded, setOffboarded] = useState<{ sockets: number } | null>(null);
 
   // A different worker in the same panel starts from that worker's numbers,
   // not from the last one's — otherwise clicking through a crowd carries a
   // stale reading from person to person.
   useEffect(() => {
+    setConfirmOffboard(false);
+    setOffboarded(null);
     setHr(sample.hr ?? 78);
     setSpo2(Math.round(sample.spo2 ?? 98));
     setSent(false);
@@ -130,6 +140,21 @@ export function WorkerPanel({
     setError(null);
     try {
       await onAcknowledgeHealth();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const offboard = async () => {
+    if (!onOffboard || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await onOffboard();
+      setOffboarded({ sockets: result.sockets_closed });
+      setConfirmOffboard(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -196,10 +221,7 @@ export function WorkerPanel({
         </button>
         {controlled && (
           <>
-            <p className="worker-note">
-              W A S D or the arrow keys. He walks the same floor plan as everyone
-              else and his phone decides for itself, exactly as theirs do.
-            </p>
+            <p className="worker-note">W A S D, arrows, or click a spot on his floor.</p>
             <label className="field">
               <span className="field-label">Move to floor</span>
               <select
@@ -343,17 +365,56 @@ export function WorkerPanel({
             </p>
           )}
           <p className="worker-note">
-            This rewrites the last twenty minutes of history, then leaves it to the
-            app’s own risk engine. If it raises, it raised on its own thresholds.
+            Rewrites the last twenty minutes, then leaves it to the app’s own
+            risk engine.
           </p>
+        </div>
+      )}
+
+      {/*
+        Offboarding. Last in the panel and behind a confirm, because it ends
+        this worker's access at every surface at once — their token, their
+        login, their refresh and the socket they are holding — and mid-demo is
+        exactly when a misplaced click happens. Their history is untouched:
+        the server sets a status rather than deleting the row, so the alerts
+        they already answered still say so.
+      */}
+      {onOffboard && (
+        <div className="worker-offboard">
+          {offboarded ? (
+            <p className="worker-note">
+              Offboarded. {offboarded.sockets === 0
+                ? 'No socket was open.'
+                : `${offboarded.sockets} socket${offboarded.sockets === 1 ? '' : 's'} closed.`}{' '}
+              History intact.
+            </p>
+          ) : confirmOffboard ? (
+            <>
+              <p className="worker-note">
+                Ends their access everywhere at once. Their history stays.
+              </p>
+              <div className="worker-actions">
+                <button className="btn" onClick={() => setConfirmOffboard(false)} disabled={busy}>
+                  Keep them
+                </button>
+                <button className="btn btn-danger" onClick={offboard} disabled={busy}>
+                  {busy ? 'Removing…' : 'Offboard'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <button className="btn" onClick={() => setConfirmOffboard(true)}>
+              Offboard this worker
+            </button>
+          )}
         </div>
       )}
 
       {error && <p className="dialog-error" role="alert">{error}</p>}
       {!phone && (
         <p className="worker-note">
-          Preview — no account exists for this worker, so nothing can be posted
-          to the server. The vitals dials still drive the local risk engine.
+          Preview — no account, so nothing posts. The dials still drive the
+          risk engine.
         </p>
       )}
     </section>

@@ -1397,3 +1397,115 @@ select.field-input {
 @media (prefers-reduced-motion: reduce) {
   .watch.is-health-danger .watch-face { animation: none; }
 }
+
+/* ─── Alert reach ───────────────────────────────────────────────────
+   The demo's central claim, stated as a number rather than described.
+   The headline carries it; the rows explain it; the note lands it.    */
+
+.reach-headline {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0 0 10px;
+}
+
+.reach-alarmed {
+  font-size: 34px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--danger);
+}
+
+.reach-of {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.reach-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reach-row {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.reach-count {
+  flex: none;
+  min-width: 22px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink);
+}
+
+.reach-row.is-alarmed .reach-count { color: var(--danger); }
+
+.reach-note {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: rgba(31, 111, 178, 0.08);
+  border: 1px solid rgba(31, 111, 178, 0.24);
+  border-radius: 9px;
+}
+
+.reach-note strong { color: var(--ink); font-weight: 640; }
+
+.worker-offboard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(22, 32, 43, 0.1);
+}
+
+/* ─── Short viewports ───────────────────────────────────────────────
+   A 1280×720 laptop is a normal demo machine, and there the console's
+   column needed 620px of scrolling — so the operator hunts for a control
+   mid-sentence in front of a client. Everything tightens rather than
+   anything being hidden: a control you cannot find is worse than a
+   control that is smaller.
+
+   The threshold is 900 rather than 800 because a browser reports CSS
+   pixels, not the panel's advertised resolution: a "1366x768" laptop at
+   90% device scale reports 853, and a breakpoint set to the hardware
+   number misses exactly the machines it was written for.               */
+
+@media (max-height: 900px) {
+  .hud-left { top: 62px; gap: 7px; }
+
+  .hud-card { padding: 10px 12px; }
+
+  .hud-card-title { margin-bottom: 5px; }
+
+  .hud-figure { font-size: 26px; }
+
+  .watch-face { padding: 10px; }
+
+  .watch-vital { font-size: 24px; }
+
+  .worker-card { gap: 8px; }
+
+  .worker-vitals { gap: 7px; }
+
+  .hud-bars { gap: 2px; }
+
+  .reach-alarmed { font-size: 26px; }
+
+  /* The tallest single element after the watch: two slider fields. */
+  .field { gap: 5px; }
+
+  .btn { padding: 7px 13px; }
+}

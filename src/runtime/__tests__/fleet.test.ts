@@ -366,3 +366,48 @@ describe('Fleet — health alert acknowledgement', () => {
     fleet.stop();
   });
 });
+
+describe('Fleet — retiring an offboarded worker', () => {
+  const base = () => ({
+    frame: FRAME,
+    getContext: () => ({
+      position: { x: 0, z: 0 }, floor: '1', moving: false, noiseDbFs: -40,
+      noiseAgeMs: 0, gpsAgeMs: 0, stepsReadable: true,
+    }),
+  });
+
+  it('closes that worker’s socket and drops them from the fleet', () => {
+    // The server has already closed the socket and will refuse every future
+    // call from them. Leaving the record would have a client reconnecting to
+    // an account that is gone, and still being counted in the roster.
+    const stopped: number[] = [];
+    let opened = 0;
+    const fleet = new Fleet({
+      ...base(),
+      connect: () => {
+        const id = ++opened;
+        return { start() {}, stop() { stopped.push(id); }, kick() {} };
+      },
+    });
+    fleet.start(session, [worker(1), worker(2), worker(3)]);
+    expect(fleet.phones).toHaveLength(3);
+
+    fleet.retire(2);
+
+    expect(stopped).toEqual([2]);
+    expect(fleet.phones).toHaveLength(2);
+    expect(fleet.phoneFor(2)).toBeUndefined();
+    // The others are untouched.
+    expect(fleet.phoneFor(1)?.workerId).toBe('u-1');
+    expect(fleet.phoneFor(3)?.workerId).toBe('u-3');
+    fleet.stop();
+  });
+
+  it('is a no-op for a worker who is not in the fleet', () => {
+    const fleet = new Fleet({ ...base(), connect: () => ({ start() {}, stop() {}, kick() {} }) });
+    fleet.start(session, [worker(1)]);
+    expect(() => fleet.retire(99)).not.toThrow();
+    expect(fleet.phones).toHaveLength(1);
+    fleet.stop();
+  });
+});
