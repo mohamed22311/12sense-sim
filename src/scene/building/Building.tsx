@@ -1,11 +1,13 @@
 import { useFrame } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as THREE from 'three';
+import { Vector3 } from 'three';
 import type { SiteDef } from '@/sites/types';
 import type { Agents } from '@/sim/agents';
 import type { Activity } from '@/sim/jobs';
 import { FloorSlab } from '@/scene/building/FloorSlab';
 import { AlertZone } from '@/scene/building/AlertZone';
+import { focusCameraOn } from '@/scene/cameraFocus';
 import { WristWatch } from '@/scene/building/WristWatch';
 import type { WatchAlert } from '@/ui/hud/WatchFace';
 import { Portals } from '@/scene/building/Portals';
@@ -294,6 +296,16 @@ export function Building({ site, agents, controlled, watch }: BuildingProps) {
           onClick={(e) => {
             e.stopPropagation();
             selectWorker(slot.index);
+          }}
+          /* And a second click flies to them. Picking one person out of sixty
+             at thirty metres is a hard enough target once; doing it again to
+             show somebody their face is worse. */
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            const group = groups.current.get(slot.index);
+            if (!group) return;
+            const at = group.getWorldPosition(new Vector3());
+            focusCameraOn(at.x, at.y + 1.1, at.z, 2.6);
           }}
           onPointerOver={(e) => {
             e.stopPropagation();

@@ -6,6 +6,7 @@ import type { Modality, RiskBand } from '@/api/types';
 import { useBuildingStore } from '@/state/buildingStore';
 import { MachineDialog } from '@/ui/hud/MachineDialog';
 import { SitePositionDialog } from '@/ui/hud/SitePositionDialog';
+import { focusCameraOn, resetCamera } from '@/scene/cameraFocus';
 import { WorkerPanel, type WorkerSample } from '@/ui/hud/WorkerPanel';
 import { EndSession } from '@/ui/hud/EndSession';
 import { ReachPanel, type ReachBreakdown } from '@/ui/hud/ReachPanel';
@@ -400,6 +401,15 @@ export function Hud({
         */}
         {worker && (
           <WorkerPanel
+            onFlyTo={() => {
+              const state = agents?.stateFor(worker.index);
+              if (!state) return;
+              const elevation =
+                site.floors.find((f) => f.id === state.floorId)?.elevation ?? 0;
+              // Head height and close: the point of going to a worker is to
+              // see the person, not the top of their helmet.
+              focusCameraOn(state.position.x, elevation + 1.2, state.position.z, 2.8);
+            }}
             sample={worker}
             phone={workers.phone(worker.index)}
             buffer={workers.buffer(worker.index)}
@@ -624,7 +634,14 @@ export function Hud({
         })}
       </nav>
 
-      <p className="hud-hint">Drag to orbit · scroll to zoom · click a floor or a machine</p>
+      <p className="hud-hint">
+        Drag to orbit · right-drag or shift-drag to pan · scroll to fly in ·
+        double-click a worker, or use “Go to it” on a machine ·{' '}
+        <button className="hud-hint-btn" onClick={resetCamera}>
+          Esc
+        </button>{' '}
+        for the whole building
+      </p>
 
       {selectedMachine && (
         <MachineDialog

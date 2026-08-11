@@ -5,6 +5,7 @@ import { Building } from '@/scene/building/Building';
 import type { Agents } from '@/sim/agents';
 import type { WatchBinding } from '@/scene/building/Building';
 import { watchAnchor } from '@/scene/building/watchAnchor';
+import { cameraFocus, cameraReset } from '@/scene/cameraFocus';
 import type { SiteDef } from '@/sites/types';
 import { BUILDING_CAMERA, buildingCamera } from '@/scene/building/camera';
 import { themeFor } from '@/styles/theme';
@@ -15,6 +16,8 @@ import { Surroundings } from '@/scene/building/Surroundings';
 
 // Shared drag-vs-click state between CameraRig and Scene (same module)
 const _dragState = { wasDragging: false };
+
+
 
 /**
  * Lighting a building rather than a room.
@@ -95,6 +98,18 @@ const EYE_HEIGHT = 2.4;
 /** How far the view may swing off the cutaway face, radians. */
 const MAX_AZIMUTH = 1.26;
 
+/** Closest the camera will sit to whatever it is looking at, in metres. */
+const MIN_DISTANCE_M = 1.2;
+
+/** And furthest — far enough to see the whole stack and its surroundings. */
+const MAX_DISTANCE_M = 90;
+
+/**
+ * Inside this, the camera is treated as being *within* the building and the
+ * azimuth clamp is lifted so it can turn round and look back.
+ */
+const INSIDE_DISTANCE_M = 14;
+
 /**
  * How much of the driven worker's x the camera takes up. Full tracking made
  * the building slide across the frame every time he stepped sideways; a
@@ -170,23 +185,65 @@ function CameraRig({
   const targetLook  = useRef(new THREE.Vector3(...BUILDING_CAMERA.target));
   const currentLook = useRef(new THREE.Vector3(...BUILDING_CAMERA.target));
 
-  // Zoom (scroll wheel, overview only)
-  const zoomRef = useRef(1.0);
+  /*
+    Distance in metres, not a zoom multiple of a derived framing.
+
+    The old `zoomRef` scaled `framing.distance` (about forty metres) and
+    clamped at 0.45, so the closest the camera could ever get was eighteen
+    metres — outside the building, looking at a floor from across the street.
+    Metres are also what the clamps below actually mean.
+  */
+  const distanceRef = useRef(BUILDING_CAMERA.distance);
+
+  /** What the camera orbits and looks at. Moved by panning and by focusing. */
+  const focusRef = useRef(new THREE.Vector3(...BUILDING_CAMERA.target));
+
+  /**
+   * True once the operator has moved the camera themselves.
+   *
+   * While false the rig keeps deriving its framing from the active floor, the
+   * way it always has. The moment somebody pans, zooms or focuses, it stops
+   * doing that — a camera that snapped back to the dollhouse every time the
+   * selected floor changed would fight the person flying it.
+   */
+  const freeRef = useRef(false);
+
+  /** The last focus request this rig acted on. */
+  const focusTokenRef = useRef(cameraFocus.token);
+  const resetTokenRef = useRef(cameraReset.token);
 
   // Spherical orbit around the active floor. The elevation starts nearly level
   // so the camera looks INTO a floor rather than down onto its ceiling.
   const azimuthRef   = useRef(0);
   const elevationRef = useRef(0.10);
 
+  /*
+    Free movement, not just orbit.
+
+    The rig framed the whole stack and refused to do anything else: the look
+    point was derived from the active floor, panning did not exist, and the
+    zoom floor of 0.45 still left the camera eighteen metres out. You could
+    admire the dollhouse and never walk into it — which is no use when the
+    thing you want to look at is one machine on floor 3, or one worker's face.
+
+    So the rig now orbits a *focus point the operator can move*: drag to orbit,
+    right-drag or shift-drag to pan it across the floor, scroll all the way in
+    to a couple of metres, and double-click anything to fly to it. Escape puts
+    the dollhouse back.
+  */
   useEffect(() => {
     const canvas = gl.domElement;
     let isDragging = false;
+    let isPanning = false;
     let dragDist   = 0;
     let lastX      = 0;
     let lastY      = 0;
 
     const onPointerDown = (e: PointerEvent) => {
       isDragging = true;
+      // Right button or shift pans. Middle too, for anyone who expects it from
+      // a CAD tool.
+      isPanning = e.button === 2 || e.button === 1 || e.shiftKey;
       dragDist = 0;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -202,45 +259,80 @@ function CameraRig({
       lastY = e.clientY;
 
       if (dragDist > 5) _dragState.wasDragging = true;
+      if (dragDist <= 3) return;
 
-      // Only rotate in overview mode and once past small threshold
-      if (dragDist > 3) {
+      if (isPanning) {
         /*
-          Clamped, because there is nothing behind a cutaway.
-
-          The dollhouse dims every floor except the one in focus, so from
-          behind the building is five dark walls and no interior at all — the
-          dimming that makes the front readable is exactly what makes the back
-          useless. Orbiting far enough to lose the open face was never a view
-          worth having; ±72° gives the parallax that makes the stack read as
-          solid while keeping every floor's contents in sight.
+          Panning moves the focus in the camera's own horizontal frame, so
+          dragging right always moves the world right whatever direction the
+          camera is facing. Scaled by distance: a pan that crosses the screen
+          should cross the screen, whether the camera is two metres away or
+          forty.
         */
-        azimuthRef.current = Math.max(
-          -MAX_AZIMUTH,
-          Math.min(MAX_AZIMUTH, azimuthRef.current - dx * 0.005),
-        );
-        // Drag up (dy < 0) = camera elevates higher → elevation increases
-        elevationRef.current  = Math.max(0.05, Math.min(1.2, elevationRef.current - dy * 0.004));
+        freeRef.current = true;
+        const scale = distanceRef.current * 0.0016;
+        const az = azimuthRef.current;
+        focusRef.current.x -= (Math.cos(az) * dx - Math.sin(az) * dy) * scale;
+        focusRef.current.z += (Math.sin(az) * dx + Math.cos(az) * dy) * scale;
+        return;
       }
+
+      /*
+        Azimuth is clamped only while the camera is outside looking in.
+
+        The dollhouse dims every floor but one, so from behind the building is
+        five dark walls and no interior — orbiting round there was never a view
+        worth having. Once the camera is *inside* a floor there is no back to
+        get lost behind, and being unable to turn round is the more annoying
+        limit of the two.
+      */
+      const inside = distanceRef.current < INSIDE_DISTANCE_M;
+      const next = azimuthRef.current - dx * 0.005;
+      azimuthRef.current = inside
+        ? next
+        : Math.max(-MAX_AZIMUTH, Math.min(MAX_AZIMUTH, next));
+      elevationRef.current = Math.max(-0.5, Math.min(1.35, elevationRef.current - dy * 0.004));
     };
 
-    const onPointerUp = () => { isDragging = false; };
+    const onPointerUp = () => {
+      isDragging = false;
+      isPanning = false;
+    };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoomRef.current = Math.max(0.45, Math.min(2.2, zoomRef.current + e.deltaY * 0.0007));
+      freeRef.current = true;
+      // Multiplicative, so a scroll notch moves the same *proportion* at every
+      // scale — one that stepped in metres would crawl from far away and lurch
+      // through a machine up close.
+      const next = distanceRef.current * Math.exp(e.deltaY * 0.0012);
+      distanceRef.current = Math.max(MIN_DISTANCE_M, Math.min(MAX_DISTANCE_M, next));
+    };
+
+    // Right-drag is a pan; the browser menu would interrupt it.
+    const onContextMenu = (e: Event) => e.preventDefault();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Back to the dollhouse. The one control that always works, from
+      // wherever the operator has flown themselves.
+      freeRef.current = false;
     };
 
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup',   onPointerUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('keydown', onKeyDown);
 
     return () => {
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup',   onPointerUp);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('keydown', onKeyDown);
     };
   }, [gl]);
 
@@ -348,28 +440,58 @@ function CameraRig({
       // the close-up leaking out of itself.
       camera.up.set(0, 1, 0);
 
+      if (cameraReset.token !== resetTokenRef.current) {
+        resetTokenRef.current = cameraReset.token;
+        freeRef.current = false;
+        elevationRef.current = 0.1;
+      }
+
+      // A pending "fly to this" — a double-clicked machine or worker.
+      if (cameraFocus.token !== focusTokenRef.current) {
+        focusTokenRef.current = cameraFocus.token;
+        freeRef.current = true;
+        focusRef.current.copy(cameraFocus.target);
+        distanceRef.current = cameraFocus.distance;
+        // Drop to near eye level: looking down on a machine from the
+        // dollhouse angle at three metres shows its lid, not the machine.
+        elevationRef.current = Math.min(elevationRef.current, 0.22);
+      }
+
       const driven = follow?.() ?? null;
       const activeFloor =
         site.floors.find((f) => f.id === (driven?.floorId ?? activeFloorId)) ??
         site.floors[0];
+
       /*
-        Tracking the active floor exactly put the building against the top of
-        the frame on floor 1 and the bottom on floor 6, with a third of the
+        While nobody has taken the camera anywhere, the framing is derived from
+        the active floor exactly as it always was.
+
+        Tracking that floor exactly put the building against the top of the
+        frame on floor 1 and the bottom on floor 6, with a third of the
         viewport empty on the other side. Pulling the look-point partway back
         toward the middle of the stack keeps the composition centred while
         still moving nearly ten metres across the range — the camera visibly
         rides the floor you picked, it just does not abandon the building.
       */
-      const look = new THREE.Vector3(
-        driven ? driven.x * FOLLOW_X : framing.target[0],
-        THREE.MathUtils.lerp(
-          framing.stackMidHeight,
-          activeFloor.elevation + EYE_HEIGHT,
-          0.22,
-        ),
-        framing.target[2],
-      );
-      const dist = framing.distance * zoomRef.current;
+      if (!freeRef.current) {
+        focusRef.current.set(
+          driven ? driven.x * FOLLOW_X : framing.target[0],
+          THREE.MathUtils.lerp(
+            framing.stackMidHeight,
+            activeFloor.elevation + EYE_HEIGHT,
+            0.22,
+          ),
+          framing.target[2],
+        );
+        distanceRef.current = framing.distance;
+        azimuthRef.current = Math.max(
+          -MAX_AZIMUTH,
+          Math.min(MAX_AZIMUTH, azimuthRef.current),
+        );
+      }
+
+      const look = focusRef.current;
+      const dist = distanceRef.current;
 
       const az = azimuthRef.current;
       const el = elevationRef.current;
@@ -401,7 +523,7 @@ function CameraRig({
 function DevSceneHandle() {
   const { scene, gl, camera } = useThree();
   useEffect(() => {
-    (window as unknown as { __scene: unknown }).__scene = { scene, gl, camera, watchAnchor };
+    (window as unknown as { __scene: unknown }).__scene = { scene, gl, camera, watchAnchor, cameraFocus, cameraReset };
     return () => {
       delete (window as unknown as { __scene?: unknown }).__scene;
     };

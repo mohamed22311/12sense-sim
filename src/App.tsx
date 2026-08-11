@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Scene } from './scene/Scene';
+import { Scene } from '@/scene/Scene';
 import type { WatchBinding } from '@/scene/building/Building';
 import { Fleet, seedRestingHrFor } from '@/runtime/fleet';
 import { createAgents, type Agents } from '@/sim/agents';

@@ -2084,3 +2084,21 @@ select.field-input {
 .zone-fields .field-input { width: 100%; }
 
 .face-message::-webkit-scrollbar { display: none; }
+
+/* The hint doubles as the way back: reading "Esc for the whole building" and
+   being unable to click it is the kind of small cruelty that adds up. */
+/* The hint sits in a `pointer-events: none` layer so it never eats a click
+   meant for the building — which also made this button unclickable. */
+.hud-hint-btn {
+  pointer-events: auto;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(22, 32, 43, 0.2);
+  border-radius: 5px;
+}
+
+.hud-hint-btn:hover { background: rgba(255, 255, 255, 0.85); }

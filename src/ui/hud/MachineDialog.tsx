@@ -12,6 +12,7 @@ import {
 } from '@/net/alerts';
 import { frameToLatLon } from '@/runtime/geo';
 import { useBuildingStore } from '@/state/buildingStore';
+import { focusCameraOn } from '@/scene/cameraFocus';
 
 /**
  * Raise an alert on a machine.
@@ -110,6 +111,14 @@ export function MachineDialog({ machine, agents, adminToken, onClose, onRaised }
       { anchor, origin },
     );
   }, [agents, machine.floor, machine.position.x, machine.position.z, radius, anchor, origin]);
+
+  /** Take the camera to this machine, on its own floor, at working height. */
+  const site = useBuildingStore((s) => s.site);
+  const flyToMachine = () => {
+    const elevation = site.floors.find((f) => f.id === machine.floor)?.elevation ?? 0;
+    focusCameraOn(machine.position.x, elevation + 1.1, machine.position.z, 4.2);
+    onClose();
+  };
 
   // Escape closes, and focus moves into the dialog on open — this is a modal
   // over a 3D canvas that otherwise swallows every key and pointer event.
@@ -297,6 +306,15 @@ export function MachineDialog({ machine, agents, adminToken, onClose, onRaised }
             )}
 
             <div className="dialog-actions">
+              {/*
+                A button, not a double-click on the machine itself. The first
+                click opens this dialog and its scrim then covers the canvas,
+                so the second one never reaches the machine — a gesture that
+                cannot fire is worse than no gesture. This is also the more
+                discoverable place: the dialog is already open on the machine
+                you mean.
+              */}
+              <button className="btn" onClick={flyToMachine}>Go to it</button>
               <button className="btn" onClick={onClose}>Cancel</button>
               <button
                 className="btn btn-primary"

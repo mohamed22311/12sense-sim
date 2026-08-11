@@ -71,6 +71,8 @@ export type WorkerPanelProps = {
    */
   phone: VirtualPhone | null;
   buffer: VitalsBuffer | null;
+  /** Take the camera to this worker in the scene. */
+  onFlyTo?: () => void;
   /** Answer a health alert. Routed through the seam, because in preview there
       is no phone and the standalone engine holds the alert instead. */
   onAcknowledgeHealth(): Promise<void>;
@@ -118,6 +120,7 @@ export function WorkerPanel({
   onMoveToFloor,
   floors,
   onOffboard,
+  onFlyTo,
   onClose,
 }: WorkerPanelProps) {
   const [hr, setHr] = useState(sample.hr ?? 78);
@@ -424,6 +427,16 @@ export function WorkerPanel({
               Offboard this worker
             </button>
           )}
+        </div>
+      )}
+
+      {onFlyTo && (
+        <div className="worker-actions">
+          {/* Picking one person out of sixty at thirty metres is a hard target
+              once; doing it again to show somebody their face is worse. */}
+          <button className="btn" onClick={onFlyTo}>
+            Go to them
+          </button>
         </div>
       )}
 
