@@ -19,7 +19,15 @@
  * comment nobody reads.
  */
 import { useCallback, useState } from 'react';
-import { DEMO_PASSWORD, adminUsername as adminNameFor, resumeSession } from '@/net/provisioning';
+import {
+  DEMO_PASSWORD,
+  adminUsername as adminNameFor,
+  companyNameFor,
+  passwordProblem,
+  resumeSession,
+  slugProblem,
+  workerIdentity,
+} from '@/net/provisioning';
 import {
   forgetSession,
   recentSessions,
@@ -31,7 +39,6 @@ import { CONSTRUCTION } from '@/sites/construction';
 import { useBuildingStore } from '@/state/buildingStore';
 import type { SiteDef } from '@/sites/types';
 import {
-  newSessionSlug,
   provisionCompany,
   provisionWorkers,
   type ProvisionedSession,
@@ -79,6 +86,17 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
     recentSessions().length > 0 ? 'resume' : 'new',
   );
   const [adminUsername, setAdminUsername] = useState('');
+  /*
+    The company id, typed rather than generated.
+
+    It was `newSessionSlug()` — six random characters — which made every run a
+    company nobody could name, find on the dispatcher, or write in a runbook.
+    It is still the derivation key for all sixty-one accounts, so it is
+    validated hard and shown resolved: an operator picking "acme" should see
+    `sim-acme-admin` and `sim-acme-w01` before they create anything.
+  */
+  const [slug, setSlug] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState(DEMO_PASSWORD);
   const [resuming, setResuming] = useState(false);
   const [phase, setPhase] = useState<SetupPhase>('idle');
@@ -100,7 +118,13 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
         setProgress({ done: 0, total: workerCount });
         // The company is named after the site, so the tenant on the server
         // says which demo it came from rather than always saying "Factory".
-        active = await provisionCompany(newSessionSlug(), site.label);
+        active = await provisionCompany(
+          slug.trim(),
+          site.label,
+          undefined,
+          password,
+          displayName,
+        );
         setSession(active);
       }
 
@@ -114,6 +138,8 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
         (done, total) => setProgress({ done, total }),
         undefined,
         workers,
+        undefined,
+        password,
       );
       const allWorkers = [...workers, ...result.workers];
       setWorkers(allWorkers);
@@ -141,10 +167,18 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
       onReady({ session: active, workers: allWorkers });
       setPhase('ready');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      // The one registration failure with an obvious next step. Usernames are
+      // unique platform-wide, so a taken id means someone already made this
+      // company — very possibly you, last week.
+      setError(
+        /409|exists|taken|duplicate|already/i.test(message)
+          ? `Company id "${slug.trim()}" is already taken. Pick another, or log in to it on the Log in tab.`
+          : message,
+      );
       setPhase((p) => nextPhaseAfterFailure(p));
     }
-  }, [session, workers, workerCount, onReady, site]);
+  }, [session, workers, workerCount, onReady, site, slug, displayName, password]);
 
   /**
    * Sign back in to an existing company, workers and all.
@@ -209,6 +243,13 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
   );
 
   const busy = phase !== 'idle' && phase !== 'ready' && error === null;
+  // Only complained about once there is something to complain about — an empty
+  // field on first paint is not yet a mistake.
+  const slugFault = slug.length === 0 ? null : slugProblem(slug);
+  const passwordFault = passwordProblem(password);
+  // The button asks the real question. `slugFault` is for *display* and stays
+  // quiet on an empty field; an empty field still cannot create a company.
+  const canRegister = slugProblem(slug) === null && passwordProblem(password) === null;
   const started = session !== null;
   const pct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
@@ -326,6 +367,81 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
           </>
         ) : (
         <>
+        <div className="setup-field">
+          <label className="setup-label" htmlFor="company-id">
+            Company id
+          </label>
+          <input
+            id="company-id"
+            className="setup-input setup-input-wide"
+            placeholder="acme"
+            autoComplete="off"
+            spellCheck={false}
+            value={slug}
+            disabled={busy || started}
+            onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+          />
+          {/*
+            Shown resolved, before anything is created. This one string becomes
+            sixty-one usernames and is the only thing needed to log the company
+            back in later, so an operator should read it here rather than
+            discover it on a dispatcher afterwards.
+          */}
+          <span className="setup-hint">
+            {slugFault ? (
+              <span className="setup-fault">{slugFault}</span>
+            ) : (
+              <>
+                Admin <code>{adminNameFor(slug)}</code>, workers{' '}
+                <code>{workerIdentity(slug, 1).username}</code> …{' '}
+                <code>{workerIdentity(slug, workerCount).username}</code>
+              </>
+            )}
+          </span>
+        </div>
+
+        <div className="setup-field">
+          <label className="setup-label" htmlFor="company-name">
+            Company name
+          </label>
+          <input
+            id="company-name"
+            className="setup-input setup-input-wide"
+            placeholder="Acme Manufacturing"
+            value={displayName}
+            disabled={busy || started}
+            onChange={(e) => setDisplayName(e.target.value)}
+          />
+          <span className="setup-hint">
+            Shown on the dispatcher as{' '}
+            <strong>{companyNameFor(displayName || `Demo ${slug || '…'}`, site.label)}</strong>.
+            The site is kept in the name because logging back in reads it from
+            there.
+          </span>
+        </div>
+
+        <div className="setup-field">
+          <label className="setup-label" htmlFor="new-password">
+            Password
+          </label>
+          <input
+            id="new-password"
+            className="setup-input setup-input-wide"
+            type="text"
+            autoComplete="off"
+            value={password}
+            disabled={busy || started}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <span className="setup-hint">
+            {passwordFault ? (
+              <span className="setup-fault">{passwordFault}</span>
+            ) : (
+              'Shared by the admin and every worker. Shown, not hidden — this is a demo tenant you will purge.'
+            )}
+          </span>
+        </div>
+
         {/*
           The site is chosen before anything is created, and locked once it is:
           the workers, the navmesh and the machines all belong to one site, and
@@ -376,7 +492,11 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
           </div>
         </div>
 
-        <button className="setup-start" disabled={busy} onClick={() => void run()}>
+        <button
+          className="setup-start"
+          disabled={busy || (!started && !canRegister)}
+          onClick={() => void run()}
+        >
           {error ? 'Retry' : busy ? 'Working…' : 'Start demo'}
         </button>
 

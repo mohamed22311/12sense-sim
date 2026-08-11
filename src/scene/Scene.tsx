@@ -3,6 +3,8 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Building } from '@/scene/building/Building';
 import type { Agents } from '@/sim/agents';
+import type { WatchBinding } from '@/scene/building/Building';
+import { watchAnchor } from '@/scene/building/watchAnchor';
 import type { SiteDef } from '@/sites/types';
 import { BUILDING_CAMERA, buildingCamera } from '@/scene/building/camera';
 import { themeFor } from '@/styles/theme';
@@ -100,7 +102,49 @@ const MAX_AZIMUTH = 1.26;
  */
 const FOLLOW_X = 0.55;
 
-function CameraRig({ follow }: { follow: (() => { x: number; z: number; floorId: string } | null) | null }) {
+/**
+ * Where the camera sits when it is looking at a worker's watch.
+ *
+ * Read off the watch's own world matrix rather than recomputed from the
+ * worker's position and a hardcoded arm offset. That earlier arithmetic had
+ * three chances to disagree with the animation — build scale, the raised
+ * forearm's forward swing, and the facing rotation — and it disagreed by
+ * enough to frame the back of a head.
+ */
+
+/**
+ * How the close-up is framed.
+ *
+ * Position comes from the watch's real world matrix. *Direction* is the
+ * horizontal vector from the worker's own feet out to the watch, extended —
+ * so the camera is always on the far side of the wrist from the body, and the
+ * worker can never be standing between the lens and their own screen.
+ *
+ * Two earlier attempts failed on exactly that. Backing off along the glass
+ * normal parked the camera overhead, because a raised forearm points its face
+ * at the sky. Backing off along the worker's heading put it *inside their
+ * torso*, since which side of the body the wrist is on is not something a
+ * heading tells you. The body-to-wrist vector answers the question directly
+ * and needs no convention to be right about.
+ */
+
+/** How far past the watch the camera sits, in metres. */
+const CLOSE_UP_OUT = 0.42;
+
+/** And how far above it, so the camera looks down onto a face that points up. */
+const CLOSE_UP_ABOVE = 0.2;
+
+/** Squared metres within which the camera stops easing and simply arrives. */
+const SETTLE_EPSILON = 0.0004;
+
+function CameraRig({
+  follow,
+  closeUpRoot,
+}: {
+  follow: (() => { x: number; z: number; floorId: string } | null) | null;
+  /** where the close-up worker is standing, or null when there is no close-up */
+  closeUpRoot: (() => { x: number; z: number; facing: number } | null) | null;
+}) {
   const { gl } = useThree();
   const site = useBuildingStore((s) => s.site);
   const activeFloorId = useBuildingStore((s) => s.activeFloorId);
@@ -207,6 +251,56 @@ function CameraRig({ follow }: { follow: (() => { x: number; z: number; floorId:
         rig to chase him would throw away the dollhouse read that makes the
         stack legible.
       */
+      /*
+        Close-up wins over everything else.
+
+        Computed each frame rather than once on entry, because the worker keeps
+        living — they finish a job, they turn — and a camera that locked to
+        where they were standing a second ago would drift off the watch it was
+        summoned to look at.
+      */
+      const near = closeUpRoot?.() ?? null;
+      if (near && watchAnchor.active) {
+        const outX = watchAnchor.position.x - near.x;
+        const outZ = watchAnchor.position.z - near.z;
+        const spread = Math.hypot(outX, outZ);
+
+        // Degenerate only if the wrist is directly over the feet, which the
+        // raised pose makes impossible — the heading is the fallback anyway.
+        const dirX = spread > 0.05 ? outX / spread : Math.sin(near.facing);
+        const dirZ = spread > 0.05 ? outZ / spread : Math.cos(near.facing);
+
+        targetLook.current.copy(watchAnchor.position);
+        targetPos.current.set(
+          watchAnchor.position.x + dirX * CLOSE_UP_OUT,
+          watchAnchor.position.y + CLOSE_UP_ABOVE,
+          watchAnchor.position.z + dirZ * CLOSE_UP_OUT,
+        );
+
+        // Snappier than the overview lerp: this is a deliberate move to a
+        // specific thing, and easing in over two seconds reads as a bug.
+        camera.position.lerp(targetPos.current, 0.12);
+        currentLook.current.lerp(targetLook.current, 0.12);
+
+        /*
+          And then it actually lands.
+
+          A lerp approaches asymptotically and never arrives, so the watch
+          screen — real DOM anchored to a projected point — drifted by a
+          fraction of a pixel every frame, forever. That is invisible and it
+          matters: Playwright refuses to click a target whose box changes
+          between frames, which is a fair description of what a person
+          experiences trying to press a button that will not hold still.
+        */
+        if (camera.position.distanceToSquared(targetPos.current) < SETTLE_EPSILON) {
+          camera.position.copy(targetPos.current);
+          currentLook.current.copy(targetLook.current);
+        }
+
+        camera.lookAt(currentLook.current);
+        return;
+      }
+
       const driven = follow?.() ?? null;
       const activeFloor =
         site.floors.find((f) => f.id === (driven?.floorId ?? activeFloorId)) ??
@@ -258,9 +352,9 @@ function CameraRig({ follow }: { follow: (() => { x: number; z: number; floorId:
  * 12 ms" is guesswork, and I had already spent two wrong guesses on it.
  */
 function DevSceneHandle() {
-  const { scene, gl } = useThree();
+  const { scene, gl, camera } = useThree();
   useEffect(() => {
-    (window as unknown as { __scene: unknown }).__scene = { scene, gl };
+    (window as unknown as { __scene: unknown }).__scene = { scene, gl, camera, watchAnchor };
     return () => {
       delete (window as unknown as { __scene?: unknown }).__scene;
     };
@@ -271,9 +365,11 @@ function DevSceneHandle() {
 function SceneContents({
   agents,
   controlled,
+  watch,
 }: {
   agents: Agents | null;
   controlled: { index: number; name: string } | null;
+  watch: WatchBinding | null;
 }) {
   const site = useBuildingStore((s) => s.site);
   const theme = themeFor(site);
@@ -289,6 +385,22 @@ function SceneContents({
     };
   }, [agents, controlled]);
 
+  /*
+    The close-up worker's heading, read on the frame — they keep turning while
+    the camera flies in. Where the watch *is* comes from `watchAnchor`, written
+    by the watch itself, so the two can never drift apart.
+  */
+  const closeUpIndex = useBuildingStore((s) => s.closeUpIndex);
+  const closeUpRoot = useMemo(() => {
+    if (!agents || closeUpIndex === null) return null;
+    return () => {
+      const state = agents.stateFor(closeUpIndex);
+      return state
+        ? { x: state.position.x, z: state.position.z, facing: state.facing }
+        : null;
+    };
+  }, [agents, closeUpIndex]);
+
   return (
     <>
       <color attach="background" args={[theme.sky]} />
@@ -297,7 +409,7 @@ function SceneContents({
       <fog attach="fog" args={[theme.haze, 70, 240]} />
       <SceneEnvironment intensity={theme.envIntensity} />
       <Lights site={site} />
-      <CameraRig follow={follow} />
+      <CameraRig follow={follow} closeUpRoot={closeUpRoot} />
       {/*
         The building replaces the single-room factory entirely. Until agents
         exist — the setup screen has not finished provisioning — the site is
@@ -305,7 +417,7 @@ function SceneContents({
       */}
       <DevSceneHandle />
       <Surroundings site={site} />
-      <Building site={site} agents={agents} controlled={controlled} />
+      <Building site={site} agents={agents} controlled={controlled} watch={watch} />
       <PostFx />
     </>
   );
@@ -313,10 +425,12 @@ function SceneContents({
 
 export function Scene({
   agents,
+  watch,
   controlled,
 }: {
   agents: Agents | null;
   controlled: { index: number; name: string } | null;
+  watch: WatchBinding | null;
 }) {
   return (
     <Canvas
@@ -351,7 +465,7 @@ export function Scene({
         _dragState.wasDragging = false;
       }}
     >
-      <SceneContents agents={agents} controlled={controlled} />
+      <SceneContents agents={agents} controlled={controlled} watch={watch} />
     </Canvas>
   );
 }

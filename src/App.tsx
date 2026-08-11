@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Scene } from './scene/Scene';
+import type { WatchBinding } from '@/scene/building/Building';
 import { Fleet, seedRestingHrFor } from '@/runtime/fleet';
 import { createAgents, type Agents } from '@/sim/agents';
 import { VitalsBuffer, INITIAL_SPO2 } from '@/phone/vitalsBuffer';
@@ -266,11 +267,193 @@ export default function App() {
       ? null
       : { index: controlledIndex, name: workerAccess.name(controlledIndex) };
 
+  /*
+    The watch on the wrist the camera is looking at.
+
+    Everything it needs comes from the phone that alarmed — the same object the
+    HUD reads — so the screen in the scene and the panel beside it can never
+    disagree about what this worker was told.
+  */
+  const closeUpIndex = useBuildingStore((s) => s.closeUpIndex);
+  const setCloseUp = useBuildingStore((s) => s.setCloseUp);
+  const [respondingIndex, setRespondingIndex] = useState<number | null>(null);
+
+  /**
+   * Answer the alert on one worker's behalf, and let the world react.
+   *
+   * Three things happen, and the last two are the reason this lives here
+   * rather than on the phone:
+   *
+   *  1. The response is posted from that worker's account, over their socket.
+   *  2. The alarm is cleared *immediately*, everywhere. The server resolves an
+   *     event on the first acknowledgement and broadcasts `event_resolved`, so
+   *     every other phone drops it on its own — but the machine's own alarm
+   *     was driven by a four-second status poll, which left it flashing after
+   *     the thing had been answered. Dropping it here closes that gap.
+   *  3. The worker who acknowledged walks to the machine. Acknowledging means
+   *     "I have this", and a demo where the answering worker carries on
+   *     sweeping a floor away says the opposite.
+   */
+  const respondForWorker = useCallback(
+    async (index: number, action: 'ack' | 'snooze' | 'reject', minutes = 5) => {
+      const phone = fleet?.phoneFor(index);
+      if (!phone) return;
+      const assetId = phone.activeAlert?.event.asset_id ?? null;
+      const eventId = phone.activeAlert?.event.id ?? null;
+
+      setRespondingIndex(index);
+      try {
+        const now = Date.now();
+        if (action === 'ack') await phone.ack(now);
+        else if (action === 'reject') await phone.reject(now);
+        else await phone.snooze(now + minutes * 60_000, now);
+      } catch (error) {
+        console.error(`[app] worker ${index} could not respond:`, error);
+        return;
+      } finally {
+        setRespondingIndex(null);
+      }
+
+      if (action !== 'ack') {
+        // A snooze or a refusal answers for this worker only — the event is
+        // still open and everyone else's alarm still stands.
+        setCloseUp(null);
+        return;
+      }
+
+      const store = useBuildingStore.getState();
+      if (eventId) {
+        store.setOpenAlerts(store.openAlerts.filter((a) => a.eventId !== eventId));
+      }
+      // Every other phone clears on the server's broadcast; this covers the
+      // acknowledging one, whose own alert is already gone.
+      if (assetId) agents?.sendToMachine(index, assetId);
+      setCloseUp(null);
+    },
+    [fleet, agents, setCloseUp],
+  );
+
+  /*
+    Re-read on a timer, not only when the close-up opens.
+
+    The binding used to be memoised on `closeUpIndex` alone, so the alert it
+    captured was whatever was showing at the moment the camera arrived. A
+    second event landing while somebody was reading their watch left the first
+    one on the screen, with buttons that would answer the wrong event.
+  */
+  const [alertTick, setAlertTick] = useState(0);
+  useEffect(() => {
+    if (closeUpIndex === null) return;
+    const timer = setInterval(() => setAlertTick((n) => n + 1), 500);
+    return () => clearInterval(timer);
+  }, [closeUpIndex]);
+
+  const watch: WatchBinding | null = useMemo(() => {
+    void alertTick;
+    if (closeUpIndex === null) return null;
+
+    const common = {
+      busy: respondingIndex === closeUpIndex,
+      onClose: () => setCloseUp(null),
+    };
+
+    const group = fleet?.phoneFor(closeUpIndex)?.activeAlert ?? null;
+    if (group) {
+      return {
+        ...common,
+        alert: {
+          kind: 'group' as const,
+          message: group.event.message,
+          assetLabel: group.event.asset_label ?? null,
+          severity: group.event.severity ?? 'high',
+          modality: group.modality,
+          distanceM: group.distanceM,
+          workerFloor: group.snapshot.worker_floor ?? null,
+          eventFloor: group.event.floor ?? null,
+        },
+        onAcknowledge: () => void respondForWorker(closeUpIndex, 'ack'),
+        onSnooze: (minutes: number) => void respondForWorker(closeUpIndex, 'snooze', minutes),
+        onReject: () => void respondForWorker(closeUpIndex, 'reject'),
+      };
+    }
+
+    /*
+      Falling back to the worker's own body.
+
+      Raising somebody's heart rate until their phone's risk engine alarms is
+      one of the two things this demo does, and the close-up ignored it
+      entirely — clicking that worker showed no wrist and no way to answer,
+      because the binding only ever looked for a *group* alert. The health
+      surface is a different screen in the app and it is a different screen
+      here.
+    */
+    const health = workerAccess.health(closeUpIndex);
+    if (!health.alert || health.alert.acknowledged) return null;
+
+    const buffer = workerAccess.buffer(closeUpIndex);
+    const series = buffer?.hrSeries() ?? [];
+    return {
+      ...common,
+      alert: {
+        kind: 'health' as const,
+        band: health.alert.band,
+        title: health.alert.title,
+        reason: health.alert.reason,
+        vibrate: health.alert.delivery.vibrate,
+        hr: series.length > 0 ? series[series.length - 1].value : null,
+        spo2: buffer?.spo2()?.value ?? null,
+      },
+      onAcknowledge: () => {
+        setRespondingIndex(closeUpIndex);
+        void workerAccess
+          .acknowledgeHealth(closeUpIndex)
+          .catch((error: unknown) => console.error('[app] health ack failed:', error))
+          .finally(() => {
+            setRespondingIndex(null);
+            setCloseUp(null);
+          });
+      },
+      // A health alert has neither, and the health face renders no such
+      // buttons — these exist only to satisfy one shared binding shape.
+      onSnooze: () => {},
+      onReject: () => {},
+    };
+  }, [closeUpIndex, fleet, respondingIndex, respondForWorker, setCloseUp, alertTick, workerAccess]);
+
+  /*
+    The worker stands still while their watch is being read, and walks again
+    when it is not. Released on unmount too — a hot reload that left somebody
+    frozen would look like the simulation had died.
+  */
+  useEffect(() => {
+    agents?.holdStill(closeUpIndex);
+    return () => agents?.holdStill(null);
+  }, [agents, closeUpIndex]);
+
+  /*
+    Nobody stays in a close-up of an alert that is over.
+
+    The alert can end without this operator doing anything — a teammate
+    acknowledges, or a real handset does — and the camera would otherwise sit
+    inside the wrist of somebody whose watch has gone back to showing a pulse.
+  */
+  useEffect(() => {
+    if (closeUpIndex === null) return;
+    const timer = setInterval(() => {
+      const group = fleet?.phoneFor(closeUpIndex)?.activeAlert ?? null;
+      const health = workerAccess.health(closeUpIndex).alert;
+      // Either surface keeps the camera there. Checking only for a group alert
+      // slammed the close-up shut the instant it opened on a health one.
+      if (!group && (!health || health.acknowledged)) setCloseUp(null);
+    }, 600);
+    return () => clearInterval(timer);
+  }, [closeUpIndex, fleet, setCloseUp, workerAccess]);
+
   if (!fleet && !preview) return <SetupScreen onReady={onReady} />;
 
   return (
     <>
-      <Scene agents={agents} controlled={controlled} />
+      <Scene agents={agents} controlled={controlled} watch={watch} />
       <Hud
         site={site}
         agents={agents}

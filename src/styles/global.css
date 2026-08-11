@@ -698,20 +698,38 @@ html, body, #root {
    a monospace face because it is an identifier a dispatcher will match
    against, not prose.                                                  */
 
+/*
+  Not centred, and not behind a dark scrim.
+
+  The machine dialog draws a red zone on the floor of the building while it is
+  open, and the operator is choosing a radius by looking at it. A modal parked
+  over the middle of the frame hides the exact thing it is asking about, and a
+  dimming scrim hides the rest. So it docks to the left — over the status
+  cards, which say nothing an operator needs while composing an alert — and the
+  building stays lit and unobstructed.
+
+  The scrim still exists, because clicking away must still close and the canvas
+  behind must not receive that click. It is just nearly invisible.
+*/
 .dialog-scrim {
   position: fixed;
   inset: 0;
   z-index: 400;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: start;
   padding: 24px;
-  background: rgba(12, 16, 22, 0.34);
-  backdrop-filter: blur(2px);
+  background: rgba(12, 16, 22, 0.16);
   animation: dialog-fade 160ms ease;
 }
 
+/* Centred again on narrow screens, where there is no room beside anything. */
+@media (max-width: 900px) {
+  .dialog-scrim { justify-items: center; }
+}
+
 .dialog {
-  width: min(440px, 100%);
+  width: min(420px, 100%);
   max-height: 88vh;
   overflow-y: auto;
   background: var(--surface-raised);
@@ -726,7 +744,7 @@ html, body, #root {
 }
 
 @keyframes dialog-rise {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateX(-10px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1604,3 +1622,319 @@ select.field-input {
 }
 
 .setup-recent-forget:hover { color: var(--danger); border-color: var(--danger); }
+
+/* ─── Alert reach preview ────────────────────────────────────────────
+   Beside the circle drawn on the floor. The count is the fact that
+   decides the radius, so it gets the weight of a reading rather than
+   the weight of a hint.                                                */
+
+.reach-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 9px;
+  padding: 10px 12px;
+  background: rgba(217, 58, 52, 0.07);
+  border: 1px solid rgba(217, 58, 52, 0.26);
+  border-radius: 9px;
+}
+
+.reach-preview-lead {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.reach-preview-lead strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: #d93a34;
+}
+
+.reach-preview-part {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.reach-preview-note {
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+
+
+
+
+/* ─── The watch screen, inside the scene ─────────────────────────────
+   Real DOM transformed onto the watch on a worker's wrist. It is the
+   app's own surface — same markup, same copy, same three actions —
+   because "this is what the worker sees" should be a thing you can
+   look at rather than a caption.
+
+   Colours are the app's ALERT_PALETTE from Thalamus/theme/tokens.ts,
+   value for value.                                                    */
+
+.wrist-html { pointer-events: auto; }
+
+.wrist-screen {
+  width: 200px;
+  height: 246px;
+  overflow: hidden;
+  background: radial-gradient(120% 80% at 50% 0%, #2a1411 0%, #130d0c 55%);
+  border-radius: 26px;
+  /* The glass, not the case: a faint inner highlight along the top edge is
+     what stops a lit rectangle reading as a sticker. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  user-select: none;
+}
+
+.face {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  padding: 12px 12px 12px;
+  text-align: center;
+}
+
+/* The way back to the site. Red, because leaving is the one control here
+   that is not a response, and it must never be reached for meaning ack. */
+.face-exit {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: #cf3f38;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.face-exit:hover { background: #e2564e; }
+
+.face-eyebrow {
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 7.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: #ec8a84;
+}
+
+.face-pulse {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-top: 8px;
+}
+
+.face-pulse-ring {
+  position: absolute;
+  inset: -5px;
+  border: 3px solid #e2564e;
+  border-radius: 50%;
+  animation: face-pulse 1.6s ease-in-out infinite;
+}
+
+.face-pulse-core {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: #e2564e;
+  background: rgba(226, 86, 78, 0.16);
+  border: 1px solid rgba(226, 86, 78, 0.4);
+  border-radius: 50%;
+}
+
+@keyframes face-pulse {
+  0%, 100% { opacity: 0; transform: scale(0.857); }
+  50% { opacity: 0.18; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face-pulse-ring { animation: none; opacity: 0.18; }
+}
+
+.face-heading {
+  margin-top: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fdeceb;
+}
+
+/*
+  Scrolls rather than pushing the action off the glass.
+
+  A health reason can concatenate three findings — blood oxygen, heart-rate
+  ceiling, and elevated resting rate — which overflowed a 246px screen and took
+  "Got it, I'm resting" with it. The one control on this surface must always be
+  reachable; the prose can be scrolled for.
+*/
+.face-message {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: 4px;
+  overflow-y: auto;
+  font-size: 9px;
+  line-height: 1.4;
+  color: #e0b6b3;
+}
+
+.face-asset { font-weight: 700; color: #fdeceb; }
+
+.face-delivered {
+  flex: none;
+  margin-top: 7px;
+  padding: 3px 8px;
+  font-size: 7.5px;
+  font-weight: 600;
+  color: #4fd089;
+  background: rgba(47, 174, 102, 0.14);
+  border: 1px solid rgba(47, 174, 102, 0.35);
+  border-radius: 6px;
+}
+
+.face-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.face-btn-row { display: flex; gap: 5px; }
+
+.face-btn {
+  padding: 8px 8px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.face-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.face-btn-ack { background: #e2564e; }
+.face-btn-ack:hover:not(:disabled) { background: #ee6259; }
+
+.face-btn-ghost {
+  flex: 1;
+  font-weight: 600;
+  color: #f4d9d6;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.face-btn-ghost:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.4); }
+
+.face-btn-snooze { flex: 1; color: #1c1208; background: #e0993f; }
+
+/* ── the snooze picker, on the same screen ──────────────────────────── */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 11px;
+  background: #16100e;
+}
+
+.sheet-title {
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #b9938f;
+}
+
+.sheet-list {
+  flex: 1;
+  margin: 7px 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.sheet-option {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 3px;
+  font: inherit;
+  font-size: 9.5px;
+  text-align: left;
+  color: #e0b6b3;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.sheet-option.is-on {
+  color: #fdeceb;
+  background: rgba(224, 153, 63, 0.14);
+  border-color: rgba(224, 153, 63, 0.5);
+}
+
+.sheet-actions { display: flex; gap: 5px; }
+
+/* A field that will refuse. Stated where the value is typed, not after the
+   button — the button is the point of no return on a live server. */
+.setup-fault { color: var(--danger); }
+
+.setup-hint code {
+  padding: 1px 4px;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 11px;
+  background: var(--surface-sunk);
+  border-radius: 4px;
+}
+
+/* ── the health face ─────────────────────────────────────────────────
+   The app draws a personal health alert on its own surface, in amber
+   for caution and the same red for danger. One action, because the
+   worker is being told to stop rather than asked to dispatch.        */
+
+.face-health.is-caution .face-eyebrow,
+.face-health.is-caution .face-pulse-core { color: #e0993f; }
+
+.face-health.is-caution .face-pulse-ring { border-color: #e0993f; }
+
+.face-health.is-caution .face-pulse-core {
+  background: rgba(224, 153, 63, 0.14);
+  border-color: rgba(224, 153, 63, 0.5);
+}
+
+.face-health.is-caution .face-btn-ack { background: #c9761f; }
+.face-health.is-caution .face-btn-ack:hover:not(:disabled) { background: #d9852b; }
+
+.face-pulse-heart { font-size: 20px; }
+
+.face-vitals {
+  flex: none;
+  margin-top: 6px;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: #f4d9d6;
+}

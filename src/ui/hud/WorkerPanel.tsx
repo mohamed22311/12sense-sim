@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import type { VirtualPhone } from '@/phone/VirtualPhone';
 import type { VitalsBuffer } from '@/phone/vitalsBuffer';
 import type { Activity } from '@/sim/jobs';
-import type { RiskBand } from '@/api/types';
+import type { Modality, RiskBand } from '@/api/types';
+import { useBuildingStore } from '@/state/buildingStore';
 import { BACKFILL_MS } from '@/phone/vitalsBuffer';
 
 /**
@@ -29,7 +30,17 @@ export type WorkerSample = {
   hr: number | null;
   spo2: number | null;
   riskBand: RiskBand;
-  alert: { message: string; assetLabel: string | null; modality: string[]; distanceM: number | null } | null;
+  alert: {
+    message: string;
+    assetLabel: string | null;
+    modality: string[];
+    distanceM: number | null;
+    /** everything the close-up needs to render the app's own surface */
+    severity: string;
+    workerFloor: string | null;
+    eventFloor: string | null;
+    channels: Modality;
+  } | null;
   /** the last health alert this worker's own phone raised, if any */
   health: { band: 'caution' | 'danger'; reason: string; at: number } | null;
   /**
@@ -113,6 +124,7 @@ export function WorkerPanel({
   // Rounded on the way in: the physiology writes a fractional saturation, and
   // a slider stepping in whole percent would jump on first drag otherwise.
   const [spo2, setSpo2] = useState(Math.round(sample.spo2 ?? 98));
+  const setCloseUp = useBuildingStore((s) => s.setCloseUp);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,14 +174,19 @@ export function WorkerPanel({
     }
   };
 
-  const respond = async (action: 'ack' | 'snooze') => {
+  const respond = async (action: 'ack' | 'snooze' | 'reject', minutes = SNOOZE_MS / 60_000) => {
     if (!phone || busy) return;
     setBusy(true);
     setError(null);
     try {
       const now = Date.now();
       if (action === 'ack') await phone.ack(now);
-      else await phone.snooze(now + SNOOZE_MS, now);
+      else if (action === 'reject') await phone.reject(now);
+      else await phone.snooze(now + minutes * 60_000, now);
+      // The alert is gone from this phone, so the close-up has nothing left
+      // to show. Leaving it returns the operator to the site, which is where
+      // the next thing worth watching happens.
+      setCloseUp(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -407,6 +424,20 @@ export function WorkerPanel({
               Offboard this worker
             </button>
           )}
+        </div>
+      )}
+
+      {(sample.alert || unansweredHealth) && (
+        <div className="worker-actions">
+          {/*
+            The way into the close-up. The scene is the better place to click —
+            the worker is right there — but a crowd of sixty at thirty metres
+            is a hard target, and this panel is already open on the person the
+            operator means.
+          */}
+          <button className="btn btn-primary" onClick={() => setCloseUp(sample.index)}>
+            Look at their watch
+          </button>
         </div>
       )}
 

@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/net/apiClient';
 import {
   DemoTenantNotPurgeableError,
+  companyNameFor,
+  passwordProblem,
+  slugProblem,
   newSessionSlug,
   provisionCompany,
   provisionWorkers,
@@ -380,3 +383,62 @@ describe('provisionWorkers, when the server is imperfect', () => {
   });
 });
 
+/**
+ * The company id is typed now, and it is load-bearing.
+ *
+ * It becomes sixty-one usernames, it is parsed back out of the admin name to
+ * log the company in, and it goes into an email address. A value that survives
+ * registration but not the round trip produces a company nobody can get back
+ * into — so it is refused at the point of typing.
+ */
+describe('slugProblem', () => {
+  it('accepts what the derivation can round-trip', () => {
+    expect(slugProblem('acme')).toBeNull();
+    expect(slugProblem('acme2026')).toBeNull();
+    expect(slugProblem('  acme  ')).toBeNull();
+  });
+
+  it('refuses anything the round trip would mangle', () => {
+    // `slugFromAdminUsername` matches [a-z0-9]+ — a capital or a dash here
+    // would register fine and then fail to parse back, silently.
+    expect(slugProblem('ACME')).toMatch(/lower-case/i);
+    expect(slugProblem('acme corp')).toMatch(/lower-case/i);
+    expect(slugProblem('acme-corp')).toMatch(/lower-case/i);
+    expect(slugProblem('ac')).toMatch(/3 characters/);
+    expect(slugProblem('averylongcompanyid')).toMatch(/12 characters/);
+    expect(slugProblem('')).toMatch(/give the company an id/i);
+  });
+});
+
+describe('passwordProblem', () => {
+  it('accepts the demo default', () => {
+    expect(passwordProblem('TwelveDemo2026')).toBeNull();
+  });
+
+  it('refuses what the server would refuse, before sixty accounts exist', () => {
+    // A 422 on worker 1 of 60 arrives after the company is already created and
+    // cannot be renamed. Cheaper to say so at the keyboard.
+    expect(passwordProblem('short')).toMatch(/at least 8/i);
+    expect(passwordProblem('x'.repeat(73))).toMatch(/72 bytes/);
+  });
+
+  it('counts bytes, not characters, because bcrypt does', () => {
+    // 24 emoji is 24 characters and 96 bytes.
+    expect(passwordProblem('🔧'.repeat(24))).toMatch(/72 bytes/);
+  });
+});
+
+describe('companyNameFor', () => {
+  it('keeps the site inside the name, because logging in reads it back', () => {
+    expect(companyNameFor('Acme Manufacturing', 'Factory')).toBe('Acme Manufacturing · Factory');
+    expect(companyNameFor('Acme', 'Construction site')).toBe('Acme · Construction site');
+  });
+
+  it('does not say it twice', () => {
+    expect(companyNameFor('Acme Factory', 'Factory')).toBe('Acme Factory');
+  });
+
+  it('falls back rather than producing a nameless company', () => {
+    expect(companyNameFor('   ', 'Factory')).toBe('Demo · Factory');
+  });
+});

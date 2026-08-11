@@ -36,6 +36,41 @@ export function adminUsername(slug: string): string {
   return `sim-${slug}-admin`;
 }
 
+/**
+ * What a company id is allowed to be.
+ *
+ * Narrow on purpose. This string is the derivation key for sixty-one
+ * usernames, it is parsed back out of the admin name by
+ * `slugFromAdminUsername`, and it becomes part of an email address. Anything
+ * that would not survive that round trip — capitals, spaces, punctuation — is
+ * refused at the point of typing rather than producing a company that cannot
+ * be logged back in to.
+ */
+export const SLUG_PATTERN = /^[a-z0-9]{3,12}$/;
+
+export function slugProblem(slug: string): string | null {
+  const value = slug.trim();
+  if (value.length === 0) return 'Give the company an id.';
+  if (value.length < 3) return 'At least 3 characters.';
+  if (value.length > 12) return 'At most 12 characters.';
+  if (!SLUG_PATTERN.test(value)) return 'Lower-case letters and digits only — no spaces.';
+  return null;
+}
+
+/**
+ * A password every account in the company will share.
+ *
+ * The server's own floor is 8 bytes; bcrypt's ceiling is 72. Checked here
+ * because the failure would otherwise arrive as a 422 on worker 1 of 60, after
+ * the company already exists and cannot be renamed.
+ */
+export function passwordProblem(password: string): string | null {
+  const bytes = new TextEncoder().encode(password).length;
+  if (bytes < 8) return 'At least 8 characters.';
+  if (bytes > 72) return 'At most 72 bytes.';
+  return null;
+}
+
 const FIRST_NAMES = [
   'Ahmed', 'Sarah', 'Omar', 'Fatima', 'Carlos', 'Mei', 'Youssef', 'Elena',
   'Rahul', 'Grace', 'Tomas', 'Aisha', 'Daniel', 'Nadia', 'Peter', 'Layla',
@@ -82,13 +117,17 @@ export function newSessionSlug(): string {
  * A fleet that shared one age would make the exertion rule fire at the same
  * heart rate for everyone, which is the opposite of the point.
  */
-export function workerIdentity(slug: string, index: number): WorkerIdentity {
+export function workerIdentity(
+  slug: string,
+  index: number,
+  password: string = DEMO_PASSWORD,
+): WorkerIdentity {
   const n = String(index).padStart(2, '0');
   const birthYear = 2004 - ((index * 7) % 37);
   return {
     username: `sim-${slug}-w${n}`,
     email: `w${n}@${slug}.sim.twelvesenses.io`,
-    password: DEMO_PASSWORD,
+    password,
     firstName: FIRST_NAMES[index % FIRST_NAMES.length],
     lastName: LAST_NAMES[(index * 3) % LAST_NAMES.length],
     dateOfBirth: `${birthYear}-0${(index % 9) + 1}-1${index % 9}`,
@@ -179,8 +218,9 @@ async function seatWorker(
   index: number,
   register: RegisterFn,
   login: LoginFn,
+  password: string,
 ): Promise<ProvisionedWorker> {
-  const id = workerIdentity(session.slug, index);
+  const id = workerIdentity(session.slug, index, password);
   let last: unknown = new Error('never attempted');
 
   for (let attempt = 0; attempt < TRIES; attempt++) {
@@ -276,15 +316,17 @@ export async function provisionCompany(
   slug: string,
   siteLabel: string,
   register: RegisterFn = realRegister,
+  password: string = DEMO_PASSWORD,
+  displayName?: string,
 ): Promise<ProvisionedSession> {
-  const companyName = `Demo ${siteLabel} ${slug}`;
+  const companyName = companyNameFor(displayName ?? `Demo ${slug}`, siteLabel);
   const company = await register('/companies/register', {
     company_name: companyName,
     is_demo: true,
     admin: {
       username: adminUsername(slug),
       email: `admin@${slug}.sim.twelvesenses.io`,
-      password: DEMO_PASSWORD,
+      password,
       first_name: 'Demo',
       last_name: 'Admin',
     },
@@ -351,6 +393,7 @@ export async function provisionWorkers(
   register: RegisterFn = realRegister,
   alreadyProvisioned: readonly ProvisionedWorker[] = [],
   login: LoginFn = realLogin,
+  password: string = DEMO_PASSWORD,
 ): Promise<ProvisionWorkersResult> {
   const doneIndices = new Set(alreadyProvisioned.map((w) => w.index));
   const indices = Array.from({ length: count }, (_, i) => i + 1).filter(
@@ -363,7 +406,7 @@ export async function provisionWorkers(
 
   await pooled(indices, async (index) => {
     try {
-      workers.push(await seatWorker(session, index, register, login));
+      workers.push(await seatWorker(session, index, register, login, password));
     } catch (err) {
       failures.push({ index, error: err instanceof Error ? err.message : String(err) });
     }
@@ -471,6 +514,21 @@ export function indexFromWorkerUsername(username: string | null | undefined): nu
  * factory rather than failing: a company whose name someone edited is still
  * perfectly usable, and refusing to resume it over a label would be absurd.
  */
+/**
+ * The company's name, with the site kept inside it.
+ *
+ * `siteIdFromCompanyName` reads the site back off this string when logging in,
+ * which is what lets a company be resumed from nothing but an admin username.
+ * Now that the operator types the name, that guarantee would be one careless
+ * rename away from breaking — so the site label is appended rather than hoped
+ * for, and the setup screen shows the operator the whole name it will create.
+ */
+export function companyNameFor(displayName: string, siteLabel: string): string {
+  const name = displayName.trim() || 'Demo';
+  // Already says it — don't produce "Acme Construction site · Construction site".
+  return new RegExp(siteLabel, 'i').test(name) ? name : `${name} · ${siteLabel}`;
+}
+
 export function siteIdFromCompanyName(name: string): 'factory' | 'construction' {
   return /construction/i.test(name) ? 'construction' : 'factory';
 }

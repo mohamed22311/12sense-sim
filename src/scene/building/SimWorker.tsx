@@ -1,6 +1,7 @@
 import { memo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Billboard, Text } from '@react-three/drei';
+import type { ReactNode } from 'react';
 import * as THREE from 'three';
 import type { Activity } from '@/sim/jobs';
 import { C } from '@/styles/palette';
@@ -46,6 +47,23 @@ export type SimWorkerProps = {
    * "which one am I" has to be answerable without hunting.
    */
   controlledName?: string | null;
+  /**
+   * The camera is at this worker's wrist.
+   *
+   * They raise the forearm and turn it inward — the posture of somebody
+   * reading their own watch — which is both what a person does and what puts
+   * the face where a camera can see it. `WATCH_OFFSET` in WristWatch.tsx and
+   * `WRIST` in Scene.tsx are the same position expressed for the device and
+   * for the camera; all three have to agree.
+   */
+  checkingWatch?: boolean;
+  /**
+   * Rendered on this worker's left forearm while the camera is there.
+   *
+   * Passed as an element rather than as data so `SimWorker` stays what it is —
+   * a body — and knows nothing about alerts, responses or the app's surface.
+   */
+  watch?: ReactNode;
 };
 
 /** Torso lean and body drop per activity — what the worker is doing, at rest. */
@@ -79,6 +97,8 @@ function SimWorkerImpl({
   detailed,
   getSpeed,
   selected = false,
+  checkingWatch = false,
+  watch = null,
   controlledName = null,
 }: SimWorkerProps) {
   const controlled = controlledName !== null;
@@ -120,7 +140,19 @@ function SimWorkerImpl({
     // Arms counter-swing to the legs, damped — the detail that separates a
     // walk from a shuffle.
     if (armL.current) {
-      armL.current.rotation.x = approach(armL.current.rotation.x, -swing * 0.7 + pose.armLift, delta);
+      // Raised and held while the watch is being read: the arm stops swinging
+      // entirely, because a face that swings past the camera cannot be read or
+      // pressed. Eased into rather than snapped, so entering the close-up is
+      // one continuous movement.
+      const target = checkingWatch ? -1.32 : -swing * 0.7 + pose.armLift;
+      armL.current.rotation.x = approach(armL.current.rotation.x, target, delta);
+      armL.current.rotation.z = approach(armL.current.rotation.z, checkingWatch ? 0.38 : 0, delta);
+      // Landed, not merely approaching: the watch screen is anchored to this
+      // arm, and an easing that never finishes leaves its buttons drifting.
+      if (checkingWatch && Math.abs(armL.current.rotation.x - target) < 0.002) {
+        armL.current.rotation.x = target;
+        armL.current.rotation.z = 0.38;
+      }
     }
     if (armR.current) {
       armR.current.rotation.x = approach(armR.current.rotation.x, swing * 0.7 + pose.armLift, delta);
@@ -299,6 +331,9 @@ function SimWorkerImpl({
                 position={[0, -0.46, 0]}
                 castShadow
               />
+              {/* On the arm, so the raised pose carries it and the camera can
+                  read where it ended up instead of predicting it. */}
+              {watch}
             </group>
           </group>
           <group position={[0.27 * build, 1.06 * build - pose.crouch, 0]}>
@@ -338,6 +373,18 @@ function SimWorkerImpl({
   );
 }
 
+/*
+  Hand-written comparator, and it must list every prop.
+
+  Sixty workers re-rendering on any parent render is the cost this avoids, so
+  it earns its place — but an explicit comparator silently swallows props added
+  later, which is exactly what happened: `watch` and `checkingWatch` were added
+  and never arrived, so the close-up set its state, mounted nothing, and the
+  camera sat in the overview with no error anywhere.
+
+  `getSpeed` is deliberately still excluded: it is a closure read on the frame,
+  not a value, and comparing it would defeat the memo on every render.
+*/
 export const SimWorker = memo(
   SimWorkerImpl,
   (a, b) =>
@@ -345,5 +392,7 @@ export const SimWorker = memo(
     a.activity === b.activity &&
     a.detailed === b.detailed &&
     a.selected === b.selected &&
-    a.controlledName === b.controlledName,
+    a.controlledName === b.controlledName &&
+    a.checkingWatch === b.checkingWatch &&
+    a.watch === b.watch,
 );

@@ -90,6 +90,36 @@ type BuildingState = {
    * computes changes because the site moved under it.
    */
   anchorFollowsControlled: boolean;
+
+  setRadiusPreview(preview: BuildingState['radiusPreview']): void;
+
+  /**
+   * The worker whose wrist the camera is inside.
+   *
+   * Set by clicking a worker who is currently alarming; cleared by the red X
+   * on the watch. While it is set the camera abandons the dollhouse framing
+   * and flies to the raised forearm, and that worker's watch renders a
+   * readable screen with the app's own buttons on it.
+   *
+   * In the store rather than in the HUD because three unrelated things need
+   * it — the camera rig, the worker's pose, and the panel that opened it —
+   * and threading it through the scene graph would mean re-rendering the
+   * building to change a camera.
+   */
+  closeUpIndex: number | null;
+  setCloseUp(index: number | null): void;
+
+  /**
+   * The radius being chosen right now, drawn on the floor as a red zone.
+   *
+   * Set while the machine dialog's radius control is open, cleared when it
+   * closes. It exists because the number on a slider is not an answer to the
+   * question the operator is actually asking — *who will this reach?* — and on
+   * a 16 m floor the difference between 8 m and 20 m is the difference between
+   * three people and everybody. Showing the circle answers it before the alert
+   * is real and irreversible.
+   */
+  radiusPreview: { floorId: string; x: number; z: number; radiusM: number } | null;
   setSite(site: SiteDef): void;
   setActiveFloor(floorId: string): void;
   stepFloor(delta: number): void;
@@ -118,6 +148,8 @@ const INITIAL = {
   anchorSource: 'default' as 'default' | 'device',
   placingAnchor: false,
   anchorFollowsControlled: false,
+  radiusPreview: null as BuildingState['radiusPreview'],
+  closeUpIndex: null as number | null,
 };
 
 export const useBuildingStore = create<BuildingState>((set, get) => ({
@@ -138,6 +170,7 @@ export const useBuildingStore = create<BuildingState>((set, get) => ({
       anchorPoint: { floorId: site.floors[0].id, x: 0, z: 0 },
       placingAnchor: false,
       anchorFollowsControlled: false,
+      closeUpIndex: null,
     });
   },
 
@@ -155,6 +188,20 @@ export const useBuildingStore = create<BuildingState>((set, get) => ({
 
   setQualityTier(qualityTier) {
     set({ qualityTier });
+  },
+
+  setRadiusPreview(radiusPreview) {
+    set({ radiusPreview });
+  },
+
+  setCloseUp(closeUpIndex) {
+    // Selecting the worker too, so leaving the close-up lands on that worker's
+    // panel rather than on whatever was selected before.
+    set(
+      closeUpIndex === null
+        ? { closeUpIndex: null }
+        : { closeUpIndex, selectedWorkerIndex: closeUpIndex, selectedMachineId: null },
+    );
   },
 
   setFocus(focus) {

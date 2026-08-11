@@ -5,6 +5,9 @@ import type { SiteDef } from '@/sites/types';
 import type { Agents } from '@/sim/agents';
 import type { Activity } from '@/sim/jobs';
 import { FloorSlab } from '@/scene/building/FloorSlab';
+import { AlertZone } from '@/scene/building/AlertZone';
+import { WristWatch } from '@/scene/building/WristWatch';
+import type { WatchAlert } from '@/ui/hud/WatchFace';
 import { Portals } from '@/scene/building/Portals';
 import { SimWorker } from '@/scene/building/SimWorker';
 import { AnchorPin } from '@/scene/building/AnchorPin';
@@ -37,6 +40,21 @@ export type BuildingProps = {
    * blank canvas, and it makes the transition to a populated floor seamless.
    */
   agents: Agents | null;
+  /**
+   * What the watch on the close-up worker's wrist should show, and what its
+   * buttons do. Null when nobody is in close-up, or when that worker's alert
+   * has been answered and there is nothing left to render.
+   */
+  watch: WatchBinding | null;
+};
+
+export type WatchBinding = {
+  alert: WatchAlert;
+  busy: boolean;
+  onAcknowledge(): void;
+  onSnooze(minutes: number): void;
+  onReject(): void;
+  onClose(): void;
 };
 
 /** Simulation seconds per real second. 1 = real time. */
@@ -68,7 +86,7 @@ const slotsEqual = (a: WorkerSlot[], b: WorkerSlot[]) =>
     );
   });
 
-export function Building({ site, agents, controlled }: BuildingProps) {
+export function Building({ site, agents, controlled, watch }: BuildingProps) {
   const activeFloorId = useBuildingStore((s) => s.activeFloorId);
   const setActiveFloor = useBuildingStore((s) => s.setActiveFloor);
   const qualityTier = useBuildingStore((s) => s.qualityTier);
@@ -76,6 +94,8 @@ export function Building({ site, agents, controlled }: BuildingProps) {
   const selectWorker = useBuildingStore((s) => s.selectWorker);
   const selectedWorkerIndex = useBuildingStore((s) => s.selectedWorkerIndex);
   const anchorPoint = useBuildingStore((s) => s.anchorPoint);
+  const radiusPreview = useBuildingStore((s) => s.radiusPreview);
+  const closeUpIndex = useBuildingStore((s) => s.closeUpIndex);
   const placingAnchor = useBuildingStore((s) => s.placingAnchor);
   const setAnchorPoint = useBuildingStore((s) => s.setAnchorPoint);
 
@@ -246,6 +266,19 @@ export function Building({ site, agents, controlled }: BuildingProps) {
 
       <Portals site={site} />
 
+      {/* The reach of the alert being composed, on the floor it will be raised
+          on. Nothing is drawn unless the radius control is open. */}
+      {radiusPreview && (
+        <group position={[0, floorElevation(site, radiusPreview.floorId), 0]}>
+          <AlertZone
+            x={radiusPreview.x}
+            z={radiusPreview.z}
+            radiusM={radiusPreview.radiusM}
+            active={radiusPreview.floorId === activeFloorId}
+          />
+        </group>
+      )}
+
       <group position={[0, floorElevation(site, anchorPoint.floorId), 0]}>
         <AnchorPin
           x={anchorPoint.x}
@@ -277,6 +310,22 @@ export function Building({ site, agents, controlled }: BuildingProps) {
             getSpeed={speedGetterFor(slot.index)}
             selected={slot.index === selectedWorkerIndex}
             controlledName={controlled?.index === slot.index ? controlled.name : null}
+            checkingWatch={slot.index === closeUpIndex}
+            /* One watch, on one wrist, only while the camera is there to read
+               it. Sixty transformed DOM subtrees would cost more than the rest
+               of the scene put together. */
+            watch={
+              slot.index === closeUpIndex && watch ? (
+                <WristWatch
+                  alert={watch.alert}
+                  busy={watch.busy}
+                  onAcknowledge={watch.onAcknowledge}
+                  onSnooze={watch.onSnooze}
+                  onReject={watch.onReject}
+                  onClose={watch.onClose}
+                />
+              ) : null
+            }
           />
         </group>
       ))}

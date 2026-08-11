@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Agents } from '@/sim/agents';
 import type { MachineDef } from '@/sites/types';
+import { previewReach } from '@/ui/hud/reachPreview';
 import {
+  ALERT_RADIUS_MAX_M,
+  ALERT_RADIUS_MIN_M,
   ALERT_TYPES,
   DEFAULT_ALERT_RADIUS_M,
   raiseAlert,
@@ -27,6 +31,8 @@ import { useBuildingStore } from '@/state/buildingStore';
 
 export type MachineDialogProps = {
   machine: MachineDef;
+  /** the simulation, for previewing who this alert would reach. Null in `?preview`. */
+  agents: Agents | null;
   /** null in `?preview`, where there is no tenant to raise anything into */
   adminToken: string | null;
   onClose(): void;
@@ -35,7 +41,7 @@ export type MachineDialogProps = {
 
 const SEVERITIES: Severity[] = ['low', 'medium', 'high', 'critical'];
 
-export function MachineDialog({ machine, adminToken, onClose, onRaised }: MachineDialogProps) {
+export function MachineDialog({ machine, agents, adminToken, onClose, onRaised }: MachineDialogProps) {
   const presets = ALERT_TYPES[machine.kind];
   const [presetIndex, setPresetIndex] = useState(0);
   const [severity, setSeverity] = useState<Severity>(presets[0].severity);
@@ -55,6 +61,50 @@ export function MachineDialog({ machine, adminToken, onClose, onRaised }: Machin
     () => frameToLatLon({ anchor, origin }, machine.position.x, machine.position.z),
     [machine.position.x, machine.position.z, origin, anchor],
   );
+
+  /*
+    Draw the reach on the floor for as long as this dialog is composing an
+    alert, and take it away when it closes or the alert has been raised.
+
+    Tied to the dialog's lifetime rather than to the slider being dragged: the
+    radius is one of several fields, and an operator who picks a severity after
+    setting the radius should not watch the zone vanish because they stopped
+    touching it.
+  */
+  const setRadiusPreview = useBuildingStore((s) => s.setRadiusPreview);
+  useEffect(() => {
+    if (result) {
+      setRadiusPreview(null);
+      return;
+    }
+    setRadiusPreview({
+      floorId: machine.floor,
+      x: machine.position.x,
+      z: machine.position.z,
+      radiusM: radius,
+    });
+  }, [machine.floor, machine.position.x, machine.position.z, radius, result, setRadiusPreview]);
+
+  // Cleared on unmount too — closing with Escape must not leave a red circle
+  // burning on the floor of a demo.
+  useEffect(() => () => setRadiusPreview(null), [setRadiusPreview]);
+
+  /*
+    Who this would reach, recomputed as the radius moves.
+
+    Through the same vendored gate the phones run, so the number shown before
+    the alert is the number that happens after it. Workers move, so this is a
+    snapshot of the moment it was computed — close enough to answer "is this
+    radius the one I want", which is the only question being asked here.
+  */
+  const preview = useMemo(() => {
+    if (!agents) return null;
+    return previewReach(
+      { floorId: machine.floor, x: machine.position.x, z: machine.position.z, radiusM: radius },
+      agents.all(),
+      { anchor, origin },
+    );
+  }, [agents, machine.floor, machine.position.x, machine.position.z, radius, anchor, origin]);
 
   // Escape closes, and focus moves into the dialog on open — this is a modal
   // over a 3D canvas that otherwise swallows every key and pointer event.
@@ -190,16 +240,47 @@ export function MachineDialog({ machine, adminToken, onClose, onRaised }: Machin
               <input
                 className="field-range"
                 type="range"
-                min={10}
-                max={300}
-                step={5}
+                min={ALERT_RADIUS_MIN_M}
+                max={ALERT_RADIUS_MAX_M}
+                step={1}
                 value={radius}
                 onChange={(e) => setRadius(Number(e.target.value))}
               />
-              <span className="field-hint">
-                Each phone measures its own distance from {coordinate.latitude.toFixed(5)},{' '}
-                {coordinate.longitude.toFixed(5)} and decides alone.
-              </span>
+
+              {/*
+                The count, beside the circle on the floor. Stated before the
+                button because raising is irreversible on a live server, and
+                "this will reach four of the eleven people on this floor" is
+                the fact that decides whether this is the right radius.
+              */}
+              {preview ? (
+                <span className="reach-preview">
+                  <span className="reach-preview-lead">
+                    <strong>{preview.inRange}</strong> would be alerted
+                  </span>
+                  {preview.outOfRange > 0 && (
+                    <span className="reach-preview-part">
+                      {preview.outOfRange} on this floor, outside the circle
+                    </span>
+                  )}
+                  {preview.otherFloor > 0 && (
+                    <span className="reach-preview-part">
+                      {preview.otherFloor} on other floors, whatever the distance
+                    </span>
+                  )}
+                  {preview.nearestSilentM !== null && preview.nearestSilentM < 15 && (
+                    <span className="reach-preview-note">
+                      Nearest who would not hear it: {preview.nearestSilentM.toFixed(1)} m away.
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="field-hint">
+                  Each phone measures its own distance from{' '}
+                  {coordinate.latitude.toFixed(5)}, {coordinate.longitude.toFixed(5)} and
+                  decides alone.
+                </span>
+              )}
             </label>
 
             {error && <p className="dialog-error" role="alert">{error}</p>}

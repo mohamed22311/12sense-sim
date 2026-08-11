@@ -36,6 +36,8 @@ export type AgentState = {
 export type Agent = {
   state: AgentState;
   tick(dtMs: number): void;
+  /** Pre-empt whatever they are doing and send them to do this instead. */
+  sendTo(job: Job): void;
 };
 
 export type AgentOptions = {
@@ -111,8 +113,22 @@ export function createAgent(opts: AgentOptions): Agent {
     }
   };
 
+  /**
+   * A job forced on the agent instead of one it chose.
+   *
+   * Null except in the frame after `sendTo` is called. It exists so that
+   * acknowledging an alert means something in the world: the worker who takes
+   * responsibility for a machine walks to that machine and works on it, which
+   * is the difference between an alert that was answered and an alert that was
+   * dismissed. Consumed by `beginRouting` rather than applied directly,
+   * because routing is where an unreachable target is handled and there is no
+   * reason for this to reimplement that.
+   */
+  let assigned: Job | null = null;
+
   const beginRouting = () => {
-    const job = pickJob(site, state.role, state.floorId, rand);
+    const job = assigned ?? pickJob(site, state.role, state.floorId, rand, opts.index);
+    assigned = null;
     const route = routeAcrossFloors(
       site,
       grids,
@@ -204,6 +220,25 @@ export function createAgent(opts: AgentOptions): Agent {
   };
 
   return {
+    /**
+     * Send this worker to a specific place to do a specific thing.
+     *
+     * Pre-empts whatever they were doing: an acknowledged alert is more
+     * important than the sweep they were halfway through, and a worker who
+     * finished their round first before responding would be telling the wrong
+     * story about what acknowledging means.
+     */
+    sendTo(job: Job) {
+      assigned = job;
+      state.job = job;
+      legs = [];
+      legIndex = 0;
+      pointIndex = 0;
+      dwellRemainingMs = 0;
+      phase = 'routing';
+      beginRouting();
+    },
+
     state,
     tick(dtMs: number) {
       // Reset first, every tick, unconditionally: physiology reads this and a

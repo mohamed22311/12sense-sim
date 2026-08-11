@@ -9,7 +9,7 @@
  * `Math.random` itself, so a worker's behaviour is reproducible in a test and
  * varied in a demo.
  */
-import type { JobAnchor, JobAnchorKind, SiteDef, Vec2 } from '@/sites/types';
+import type { FloorDef, JobAnchor, JobAnchorKind, SiteDef, Vec2 } from '@/sites/types';
 import type { Role } from '@/sim/roles';
 
 export type Activity =
@@ -105,14 +105,22 @@ const ANCHOR_FOR: Record<Exclude<JobKind, 'inspect' | 'operate'>, JobAnchorKind>
  * terminal entry, a sweep or a break was drawn uniformly from all six floors —
  * five times in six it required a stair trip. Since most job kinds are anchor
  * jobs, the result was a workforce that mostly commuted: sampling thirty
- * workers found nineteen of them on a staircase at once, and the site read as
- * a stairwell with a factory attached.
+ * workers found nineteen of them on a staircase at once.
  *
- * At 0.85 a floor's own people mostly stay on it and work, and cross-floor
- * traffic is a steady trickle rather than the main activity — which is both
- * what a real site looks like and what still exercises the floor gate.
+ * It is now absolute: **a worker never leaves the floor they start on.**
+ *
+ * That is a demo decision, and it is the right one. A worker in transit is a
+ * worker whose floor is ambiguous — `floorId` only changes on *arrival*, so
+ * someone drawn halfway up a stairwell still reports the floor they left, and
+ * the floor gate correctly used a value the screen appeared to contradict. Add
+ * that the roster is inspected seconds after an alert fires, by which time
+ * people have moved, and the demo's clearest claim — "this worker's own phone
+ * decided, on its own floor" — became impossible to check by looking.
+ *
+ * The floor gate is still exercised, and better: every alert is raised on one
+ * floor while five other floors of people stay put and stay silent.
  */
-const LOCAL_JOB_BIAS = 0.85;
+const LOCAL_JOB_ONLY = true;
 
 /**
  * Pick one. Throws on an empty pool rather than returning `undefined`, because
@@ -142,27 +150,93 @@ function localAnchorsOfKind(
   return site.floors.find((f) => f.id === floorId)?.anchors.filter((a) => a.kind === kind) ?? [];
 }
 
+/**
+ * Where to actually stand, given where the job is.
+ *
+ * Every worker on a floor draws from the same handful of anchors and four
+ * machines, and `nearestWalkable` snaps a target inside a machine's footprint
+ * to one specific cell — so ten people sent to inspect the same press all
+ * converged on the same half-metre square and stood inside one another. It
+ * looked like a rendering fault and it made the crowd unclickable: the worker
+ * you meant was behind two others occupying his exact position.
+ *
+ * So a job's target is a *spot near* the thing, not the thing. The offset is
+ * drawn from the agent's own generator, which keeps a run reproducible, and is
+ * at least three navmesh cells so two workers cannot round to the same one.
+ */
+const STAND_MIN_M = 1.5;
+const STAND_SPREAD_M = 1.6;
+
+/**
+ * The golden angle, in radians.
+ *
+ * Consecutive workers placed at multiples of it never bunch: it is the same
+ * property that makes a sunflower's seeds even. A random angle per worker
+ * looked right in isolation and still collided — ten draws from a uniform
+ * circle put two people 41 cm apart, which is inside one navmesh cell and
+ * therefore inside each other.
+ */
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+/** Kept off the walls, so a clamped spot is still somewhere a person can stand. */
+const WALL_MARGIN_M = 0.8;
+
+function boundsOf(site: SiteDef, floorId: string): FloorDef['bounds'] {
+  const floor = site.floors.find((f) => f.id === floorId);
+  if (!floor) throw new Error(`no floor "${floorId}" on this site`);
+  return floor.bounds;
+}
+
+function standingSpot(
+  target: Vec2,
+  rand: () => number,
+  bounds: FloorDef['bounds'],
+  index: number,
+): Vec2 {
+  // Their place in the ring comes from who they are, so two workers cannot be
+  // dealt the same one. The jitter keeps it from reading as a parade formation
+  // without ever being large enough to close the gap.
+  const angle = index * GOLDEN_ANGLE + (rand() - 0.5) * 0.5;
+  const distance = STAND_MIN_M + (((index * 0.618) % 1) + (rand() - 0.5) * 0.15) * STAND_SPREAD_M;
+  // Clamped, because an anchor near a wall would otherwise scatter people
+  // through it — and a target outside the floor is a route that cannot be
+  // planned, which strands the worker rather than moving them.
+  return {
+    x: clamp(target.x + Math.cos(angle) * distance, bounds.minX, bounds.maxX, WALL_MARGIN_M),
+    z: clamp(target.z + Math.sin(angle) * distance, bounds.minZ, bounds.maxZ, WALL_MARGIN_M),
+  };
+}
+
+const clamp = (value: number, lo: number, hi: number, margin: number) =>
+  Math.max(lo + margin, Math.min(hi - margin, value));
+
 export function pickJob(
   site: SiteDef,
   role: Role,
   currentFloorId: string,
   rand: () => number,
+  /** who is being sent — decides their place in the ring around the target */
+  index = 0,
 ): Job {
   const kind = choose(ROLE_JOBS[role], rand, `job kinds for role ${role}`);
 
   if (kind === 'inspect' || kind === 'operate') {
-    // Prefer this floor, but not exclusively — a site whose workers never
-    // changed level would never exercise the stairs, and the floor gate is one
-    // of the things the demo exists to show.
+    // This floor's machines only. `all` remains the fallback for the case a
+    // floor genuinely has none — a worker with no work is worse than a worker
+    // who travels, and the site tests do not require machines on every floor.
     const local = site.floors.find((f) => f.id === currentFloorId)?.machines ?? [];
     const all = site.floors.flatMap((f) => f.machines);
-    const pool = local.length > 0 && rand() < LOCAL_JOB_BIAS ? local : all;
+    const pool = LOCAL_JOB_ONLY && local.length > 0 ? local : all;
     const machine = choose(pool, rand, 'machines');
     return {
       id: `${kind}:${machine.id}`,
       kind,
       activity: ACTIVITY[kind],
-      target: { floorId: machine.floor, position: machine.position },
+      // Around the machine, not inside it — see `standingSpot`.
+      target: {
+        floorId: machine.floor,
+        position: standingSpot(machine.position, rand, boundsOf(site, machine.floor), index),
+      },
       dwellMs: between(DWELL[kind], rand),
       label: `${kind === 'inspect' ? 'Inspecting' : 'Operating'} ${machine.label}`,
     };
@@ -173,10 +247,11 @@ export function pickJob(
   // empty — it is here for a site that omits an optional kind, not for one
   // that is malformed.
   const wanted = ANCHOR_FOR[kind];
-  // Same bias as machine work. Without it every anchor job was a trip.
+  // Same rule as machine work: this floor's anchors, falling back to the whole
+  // site only when this floor carries none of that kind.
   const local = localAnchorsOfKind(site, wanted, currentFloorId);
   const everywhere = anchorsOfKind(site, wanted);
-  const preferred = local.length > 0 && rand() < LOCAL_JOB_BIAS ? local : everywhere;
+  const preferred = LOCAL_JOB_ONLY && local.length > 0 ? local : everywhere;
   const anchor = choose(
     preferred.length > 0 ? preferred : anchorsOfKind(site, 'terminal'),
     rand,
@@ -187,7 +262,10 @@ export function pickJob(
     id: `${kind}:${anchor.id}`,
     kind,
     activity: ACTIVITY[kind],
-    target: { floorId: anchor.floor, position: anchor.position },
+    target: {
+      floorId: anchor.floor,
+      position: standingSpot(anchor.position, rand, boundsOf(site, anchor.floor), index),
+    },
     dwellMs: between(DWELL[kind], rand),
     label: LABELS[kind](anchor.id),
   };

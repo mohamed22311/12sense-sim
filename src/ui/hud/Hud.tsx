@@ -298,6 +298,12 @@ export function Hud({
               assetLabel: alert.event.asset_label ?? null,
               modality: modalityChannels(alert.modality),
               distanceM: alert.distanceM,
+              severity: alert.event.severity ?? 'high',
+              // The floor the worker was on when their phone decided, off the
+              // snapshot the gate recorded — not where they are standing now.
+              workerFloor: alert.snapshot.worker_floor ?? null,
+              eventFloor: alert.event.floor ?? null,
+              channels: alert.modality,
             }
           : null,
         online: phone !== null,
@@ -590,6 +596,7 @@ export function Hud({
       {selectedMachine && (
         <MachineDialog
           machine={selectedMachine}
+          agents={agents}
           adminToken={adminToken}
           onClose={() => selectMachine(null)}
           onRaised={onRaised}

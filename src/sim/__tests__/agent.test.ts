@@ -105,28 +105,69 @@ describe('agent', () => {
     }
   });
 
-  it('eventually changes floor when a job sends it elsewhere', () => {
-    const a = spawn({ index: 2, role: 'materials', rand: seeded(7) });
-    const floors = new Set<string>();
-    for (let i = 0; i < 20_000; i++) {
-      a.tick(50);
-      floors.add(a.state.floorId);
+  it('never leaves the floor it started on', () => {
+    /*
+      Was the opposite assertion. Workers used to take jobs anywhere on the
+      site, which put a steady fraction of them on a staircase — and a worker
+      on a staircase reports the floor they *left*, because `floorId` only
+      changes on arrival. So the screen showed someone between levels while
+      their phone gated on the floor below, and an operator checking who
+      alarmed had no way to tell that from a broken gate.
+    */
+    for (const [index, role] of [
+      [2, 'materials'], [3, 'technician'], [4, 'operator'], [5, 'cleaner'],
+    ] as const) {
+      const a = spawn({ index, role, rand: seeded(index * 7) });
+      const floors = new Set<string>();
+      for (let i = 0; i < 20_000; i++) {
+        a.tick(50);
+        floors.add(a.state.floorId);
+      }
+      expect([...floors]).toEqual(['1']);
     }
-    expect(floors.size).toBeGreaterThan(1);
   });
 
-  it('reports climbing while traversing a portal', () => {
+  it('never reports climbing, because nobody uses the stairs', () => {
     const a = spawn({ index: 3, role: 'materials', rand: seeded(11) });
     const seen = new Set<string>();
     for (let i = 0; i < 20_000; i++) {
       a.tick(50);
       seen.add(a.state.activity);
     }
+    expect(seen.has('climbing')).toBe(false);
+  });
+
+  it('still traverses a portal when a floor carries no work at all', () => {
+    // The machinery is intact and one flag away — this exercises it through
+    // the only path that still reaches it, a floor with nothing to do on it.
+    const bare = {
+      ...FACTORY,
+      floors: FACTORY.floors.map((f) =>
+        f.id === '1' ? { ...f, machines: [], anchors: [] } : f,
+      ),
+    };
+    const a = spawn({ index: 6, role: 'operator', site: bare, rand: seeded(3) });
+    const seen = new Set<string>();
+    const floors = new Set<string>();
+    for (let i = 0; i < 20_000; i++) {
+      a.tick(50);
+      seen.add(a.state.activity);
+      floors.add(a.state.floorId);
+    }
     expect(seen.has('climbing')).toBe(true);
+    expect(floors.size).toBeGreaterThan(1);
   });
 
   it('takes a new job after finishing one', () => {
-    const a = spawn();
+    /*
+      Seeded, not `cycling`. A five-value cycle is a poor fixture for anything
+      that consumes a variable number of `rand()` calls — and picking *where to
+      stand* near a target now consumes two more per job, which re-aligned the
+      cycle so the same anchor came up forever. The job really did change; the
+      fixture could no longer express it. Same trap as the two cross-floor
+      tests above, and the same fix.
+    */
+    const a = spawn({ rand: seeded(23) });
     a.tick(16);
     const first = a.state.job!.id;
     let changed = false;

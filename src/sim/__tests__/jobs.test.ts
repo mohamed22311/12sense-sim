@@ -58,14 +58,36 @@ describe('pickJob', () => {
     }
   });
 
-  it('sometimes sends a worker to another floor', () => {
-    const floors = new Set<string>();
-    for (let i = 0; i < 60; i++) {
-      floors.add(
-        pickJob(FACTORY, 'materials', '1', seq([i / 60, ((i * 13) % 60) / 60, 0.9])).target.floorId,
-      );
+  it('never sends a worker off their own floor', () => {
+    /*
+      The rule the demo rests on. A worker in transit is a worker whose floor
+      is ambiguous — `floorId` only changes on arrival, so someone drawn
+      halfway up a stairwell still reports the floor they left — and an
+      operator checking who alarmed seconds after an alert cannot tell that
+      from a bug. Every role, every floor, every draw.
+    */
+    for (const role of ['technician', 'materials', 'operator', 'supervisor'] as const) {
+      for (const floorId of FACTORY.floors.map((f) => f.id)) {
+        for (let i = 0; i < 40; i++) {
+          const job = pickJob(FACTORY, role, floorId, seq([i / 40, ((i * 13) % 40) / 40, 0.9]));
+          expect(job.target.floorId).toBe(floorId);
+        }
+      }
     }
-    expect(floors.size).toBeGreaterThan(1);
+  });
+
+  it('leaves the floor only when it carries no work of the kind wanted', () => {
+    // The one exception, and it is not a compromise: a worker with no work at
+    // all is worse than a worker who travels. Real sites do not have this
+    // problem, so this is a guard for a malformed one.
+    const bare = {
+      ...FACTORY,
+      floors: FACTORY.floors.map((f) =>
+        f.id === '2' ? { ...f, machines: [], anchors: [] } : f,
+      ),
+    };
+    const job = pickJob(bare, 'operator', '2', seq([0.0, 0.0, 0.5]));
+    expect(job.target.floorId).not.toBe('2');
   });
 
   it('is deterministic given the same random sequence', () => {
@@ -121,5 +143,73 @@ describe('pickJob on a malformed site', () => {
       message = e instanceof Error ? e.message : String(e);
     }
     expect(message).toMatch(/machines|anchors/);
+  });
+});
+
+/**
+ * Ten people sent to the same press must not end up in the same half-metre.
+ *
+ * They did. Every worker on a floor draws from the same handful of anchors and
+ * four machines, and a target inside a machine's footprint snaps to one
+ * specific walkable cell — so the crowd converged on one spot and stood inside
+ * one another, which looked like a rendering fault and made the worker you
+ * meant to click unreachable behind two others.
+ */
+describe('where a job puts you', () => {
+  /** A distinct generator per worker, as each agent has. */
+  const forWorker = (n: number) => {
+    let seed = n * 7919;
+    return () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  it('spreads ten workers doing the same job over distinct spots', () => {
+    const spots = Array.from({ length: 10 }, (_, i) =>
+      pickJob(FACTORY, 'operator', '3', forWorker(i + 1), i + 1).target.position,
+    );
+
+    // A navmesh cell is 0.5 m; anything closer than that rounds to one cell
+    // and is two people in one place.
+    for (let a = 0; a < spots.length; a++) {
+      for (let b = a + 1; b < spots.length; b++) {
+        const gap = Math.hypot(spots[a].x - spots[b].x, spots[a].z - spots[b].z);
+        expect(gap).toBeGreaterThan(0.5);
+      }
+    }
+  });
+
+  it('keeps every spot inside the floor, off the walls', () => {
+    // The scatter must never push a target through a wall: a target outside
+    // the floor is a route that cannot be planned, which strands the worker
+    // instead of moving them.
+    const floor = FACTORY.floors[2];
+    for (const role of ROLES) {
+      for (let i = 0; i < 60; i++) {
+        const { position } = pickJob(FACTORY, role, floor.id, forWorker(i + 1), i + 1).target;
+        expect(position.x).toBeGreaterThanOrEqual(floor.bounds.minX);
+        expect(position.x).toBeLessThanOrEqual(floor.bounds.maxX);
+        expect(position.z).toBeGreaterThanOrEqual(floor.bounds.minZ);
+        expect(position.z).toBeLessThanOrEqual(floor.bounds.maxZ);
+      }
+    }
+  });
+
+  it('still stands near the thing, not somewhere else entirely', () => {
+    // The spread only earns its place if the worker is plainly *at* the
+    // machine. Three metres away is attending it; ten is loitering.
+    const machine = FACTORY.floors[2].machines[0];
+    for (let i = 0; i < 40; i++) {
+      const job = pickJob(FACTORY, 'operator', '3', forWorker(i + 1), i + 1);
+      if (!job.id.includes(machine.id)) continue;
+      const gap = Math.hypot(
+        job.target.position.x - machine.position.x,
+        job.target.position.z - machine.position.z,
+      );
+      expect(gap).toBeLessThan(4);
+    }
   });
 });

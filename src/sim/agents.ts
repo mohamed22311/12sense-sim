@@ -86,6 +86,29 @@ export type Agents = {
   moveControlledToFloor(floorId: string): void;
   /** Walk the controlled worker to a point on the floor he is on. */
   walkControlledTo(target: Vec2): void;
+  /**
+   * Send a worker to attend to a machine, because they said they would.
+   *
+   * The demo's weakest moment was the second after an acknowledgement: the
+   * alarm cleared and the worker who answered it carried on sweeping a floor
+   * two rooms away. Acknowledging means "I have this" — so they walk to the
+   * asset and work on it, and the operator can watch them do it.
+   *
+   * Returns false when the machine is not on this site, or the worker has no
+   * agent (a real handset owns that index).
+   */
+  sendToMachine(index: number, machineId: string): boolean;
+  /**
+   * Stop one worker where they stand, or release them with `null`.
+   *
+   * Used while their watch is being read. A person who stops to look at an
+   * alert on their wrist stops walking, so this is what the moment actually
+   * looks like — but the reason it exists is blunter: the watch screen is
+   * anchored to the wrist, and a button that drifts across the viewport at
+   * walking pace cannot be pressed. Playwright refuses to click it as
+   * "not stable", which is a fair description of the experience.
+   */
+  holdStill(index: number | null): void;
   /** Where the controlled worker is, for the camera to follow. */
   controlledState(): AgentState | null;
   /** Where he is heading under click-to-move, if anywhere. */
@@ -124,6 +147,9 @@ export function createAgents(opts: AgentsOptions): Agents {
   const excluded = opts.excluded ?? new Set<number>();
 
   const grids = new Map(site.floors.map((f) => [f.id, buildGrid(f)]));
+
+  /** The one worker standing still while their watch is being read. */
+  let held: number | null = null;
   const agents = new Map<number, Agent>();
   /** indices already reported as failed, so the console logs each once */
   const reported = new Set<number>();
@@ -222,6 +248,37 @@ export function createAgents(opts: AgentsOptions): Agents {
       controlled?.agent.moveToFloor(floorId);
     },
 
+    holdStill(index) {
+      held = index;
+      if (index !== null) {
+        const agent = agents.get(index);
+        // Their pose follows their activity, and someone reading their wrist
+        // is not mid-stride.
+        if (agent) agent.state.activity = 'resting';
+      }
+    },
+
+    sendToMachine(index, machineId) {
+      const agent = agents.get(index);
+      if (!agent) return false;
+      const machine = site.floors
+        .flatMap((floor) => floor.machines)
+        .find((m) => m.id === machineId);
+      if (!machine) return false;
+
+      agent.sendTo({
+        id: `attend:${machine.id}`,
+        kind: 'operate',
+        activity: 'operating',
+        target: { floorId: machine.floor, position: machine.position },
+        // Long, so the operator can see them arrive and stay. A worker who
+        // touched the machine and wandered off would read as a glitch.
+        dwellMs: 90_000,
+        label: `Attending ${machine.label}`,
+      });
+      return true;
+    },
+
     walkControlledTo(target) {
       controlled?.agent.walkTo(target);
     },
@@ -236,6 +293,10 @@ export function createAgents(opts: AgentsOptions): Agents {
 
     tick(dtMs, nowMs) {
       for (const [index, agent] of agents) {
+        // Frozen, deliberately: not ticking also leaves `movedThisTick` at
+        // zero, so their physiology reads as standing still — which is what
+        // they are doing.
+        if (index === held) continue;
         // One agent must never take down the other fifty-nine. This runs
         // inside the render loop, so an exception here stops the whole scene,
         // not just this worker — and the same reasoning already governs

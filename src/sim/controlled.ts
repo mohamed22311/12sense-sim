@@ -133,6 +133,16 @@ export function createControlledAgent(opts: ControlledOptions): ControlledAgent 
       }
     },
 
+    /**
+     * Ignored for a driven worker.
+     *
+     * `sendTo` pre-empts an agent's chosen job, and a driven worker has none —
+     * the operator is the one deciding where they go. Silently doing nothing
+     * is right here: acknowledging an alert on the worker you are steering
+     * should not wrench control away from you mid-step.
+     */
+    sendTo() {},
+
     moveToFloor(floorId) {
       if (!site.floors.some((f) => f.id === floorId)) return;
       state.floorId = floorId;

@@ -187,8 +187,25 @@ export const ALERT_TYPES: Record<
   ],
 };
 
-/** The alert radius, in metres, the dialog opens on. */
-export const DEFAULT_ALERT_RADIUS_M = 75;
+/**
+ * The alert radius, in metres, the dialog opens on.
+ *
+ * Was 75, which could not discriminate: a floor is 16 m x 16 m, so its two
+ * most distant points are ~22.6 m apart and *every* worker on *every* floor
+ * was inside 75 m, always. The distance axis never suppressed anyone, the
+ * radius control did nothing, and the only thing separating floors was the
+ * floor string — in a demo whose entire argument is proximity.
+ *
+ * 12 m divides the floor around a machine into a near group and a far one,
+ * which is the thing worth showing. `alertReach.test.ts` pins it against the
+ * real geometry, so re-authoring the site to a different scale fails there
+ * rather than in front of an audience.
+ */
+export const DEFAULT_ALERT_RADIUS_M = 12;
+
+/** What the radius control offers, in metres. Spans "this machine" to "this floor". */
+export const ALERT_RADIUS_MIN_M = 3;
+export const ALERT_RADIUS_MAX_M = 40;
 
 /** What `POST /team/{id}/offboard` did. */
 export type OffboardResult = {
