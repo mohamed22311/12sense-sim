@@ -128,11 +128,21 @@ const FOLLOW_X = 0.55;
  * and needs no convention to be right about.
  */
 
-/** How far past the watch the camera sits, in metres. */
-const CLOSE_UP_OUT = 0.42;
+/**
+ * How far past the watch the camera sits, in metres.
+ *
+ * Close. The screen has to fill enough of the frame to be read, and the
+ * arithmetic for that is in `WristWatch` — this is the other half of it. Far
+ * enough that the hand and sleeve are still in shot, near enough that the
+ * alert is legible.
+ */
+const CLOSE_UP_OUT = 0.19;
 
-/** And how far above it, so the camera looks down onto a face that points up. */
-const CLOSE_UP_ABOVE = 0.2;
+/** How much of the framing comes from the watch's own upward normal. */
+const OVERHEAD = 0.94;
+
+/** And how much leans away from the body, to keep the chest out of shot. */
+const LEAN = 0.34;
 
 /** Squared metres within which the camera stops easing and simply arrives. */
 const SETTLE_EPSILON = 0.0004;
@@ -149,6 +159,12 @@ function CameraRig({
   const site = useBuildingStore((s) => s.site);
   const activeFloorId = useBuildingStore((s) => s.activeFloorId);
   const framing = useMemo(() => buildingCamera(site), [site]);
+
+  // Scratch vectors for the close-up framing, reused rather than allocated
+  // sixty times a second.
+  const closeUpNormal = useRef(new THREE.Vector3()).current;
+  const closeUpDir = useRef(new THREE.Vector3()).current;
+  const closeUpUp = useRef(new THREE.Vector3()).current;
 
   const targetPos   = useRef(new THREE.Vector3(...BUILDING_CAMERA.position));
   const targetLook  = useRef(new THREE.Vector3(...BUILDING_CAMERA.target));
@@ -261,21 +277,36 @@ function CameraRig({
       */
       const near = closeUpRoot?.() ?? null;
       if (near && watchAnchor.active) {
+        /*
+          Above the wrist, looking down — the angle a person reads their own
+          watch from.
+
+          The direction is mostly the glass's own normal, which a raised
+          forearm already points skyward, plus a lean away from the body. The
+          lean is doing two jobs: it keeps the worker's own chest out of the
+          shot, and it stops the view being exactly vertical, where `lookAt`
+          has no stable idea of which way is up and the frame can roll.
+        */
+        closeUpNormal.set(0, 0, 1).applyQuaternion(watchAnchor.quaternion);
+
         const outX = watchAnchor.position.x - near.x;
         const outZ = watchAnchor.position.z - near.z;
         const spread = Math.hypot(outX, outZ);
+        const awayX = spread > 0.05 ? outX / spread : Math.sin(near.facing);
+        const awayZ = spread > 0.05 ? outZ / spread : Math.cos(near.facing);
 
-        // Degenerate only if the wrist is directly over the feet, which the
-        // raised pose makes impossible — the heading is the fallback anyway.
-        const dirX = spread > 0.05 ? outX / spread : Math.sin(near.facing);
-        const dirZ = spread > 0.05 ? outZ / spread : Math.cos(near.facing);
+        closeUpDir
+          .set(
+            closeUpNormal.x * OVERHEAD + awayX * LEAN,
+            closeUpNormal.y * OVERHEAD,
+            closeUpNormal.z * OVERHEAD + awayZ * LEAN,
+          )
+          .normalize();
 
         targetLook.current.copy(watchAnchor.position);
-        targetPos.current.set(
-          watchAnchor.position.x + dirX * CLOSE_UP_OUT,
-          watchAnchor.position.y + CLOSE_UP_ABOVE,
-          watchAnchor.position.z + dirZ * CLOSE_UP_OUT,
-        );
+        targetPos.current
+          .copy(watchAnchor.position)
+          .addScaledVector(closeUpDir, CLOSE_UP_OUT);
 
         // Snappier than the overview lerp: this is a deliberate move to a
         // specific thing, and easing in over two seconds reads as a bug.
@@ -297,9 +328,25 @@ function CameraRig({
           currentLook.current.copy(targetLook.current);
         }
 
+        /*
+          The camera rolls to match the watch, not the world.
+
+          A watch lies on a forearm at whatever angle the arm is holding, so
+          looking straight down at one with a world-up camera renders the
+          screen on the diagonal — the text ran corner to corner, which is
+          nobody's idea of reading their wrist. Taking the up vector from the
+          watch's own local up puts the display upright in frame however the
+          arm is turned.
+        */
+        closeUpUp.set(0, 1, 0).applyQuaternion(watchAnchor.quaternion);
+        camera.up.copy(closeUpUp);
         camera.lookAt(currentLook.current);
         return;
       }
+
+      // Back to world up for every other framing — a rolled overview would be
+      // the close-up leaking out of itself.
+      camera.up.set(0, 1, 0);
 
       const driven = follow?.() ?? null;
       const activeFloor =
@@ -434,7 +481,15 @@ export function Scene({
 }) {
   return (
     <Canvas
-      camera={{ position: BUILDING_CAMERA.position as [number,number,number], fov: 58, near: 0.1, far: 260 }}
+      camera={{ position: BUILDING_CAMERA.position as [number,number,number], fov: 58,
+        /*
+          Two centimetres, not ten. The watch close-up puts the camera about
+          19 cm from a 7 cm device, and at the old near plane the near edge of
+          the case sat right on it — the glass clipped away as the camera
+          settled.
+        */
+        near: 0.02,
+        far: 260 }}
       /*
         Tone mapping is the single largest visual change available here.
 

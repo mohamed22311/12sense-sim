@@ -1787,11 +1787,14 @@ select.field-input {
   "Got it, I'm resting" with it. The one control on this surface must always be
   reachable; the prose can be scrolled for.
 */
+/* Scrollable, but without a scrollbar drawn on the glass — a watch face does
+   not have one, and the close-up's whole claim is that this is the watch. */
 .face-message {
   flex: 0 1 auto;
   min-height: 0;
   margin-top: 4px;
   overflow-y: auto;
+  scrollbar-width: none;
   font-size: 9px;
   line-height: 1.4;
   color: #e0b6b3;
@@ -2079,3 +2082,5 @@ select.field-input {
 }
 
 .zone-fields .field-input { width: 100%; }
+
+.face-message::-webkit-scrollbar { display: none; }
