@@ -1509,3 +1509,98 @@ select.field-input {
 
   .btn { padding: 7px 13px; }
 }
+
+/* ─── Setup: two ways in ────────────────────────────────────────────
+   Resuming is the normal case and creating is the exception, so the tabs
+   are equal in weight rather than one being a link tucked under the
+   other — a session you cannot find how to rejoin gets re-created, which
+   is exactly the waste this exists to stop.                            */
+
+.setup-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 22px 0 6px;
+  padding: 4px;
+  background: var(--surface-sunk);
+  border-radius: 11px;
+}
+
+.setup-tab {
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--ink-2);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 130ms ease, color 130ms ease;
+}
+
+.setup-tab:hover:not(:disabled) { color: var(--ink); }
+
+.setup-tab.is-on {
+  color: var(--ink);
+  background: var(--surface-raised);
+  box-shadow: 0 1px 3px rgba(16, 32, 48, 0.14);
+}
+
+.setup-tab:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.setup-input-wide { width: 100%; }
+
+.setup-recents {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-recents li { display: flex; gap: 5px; align-items: stretch; }
+
+.setup-recent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid rgba(22, 32, 43, 0.14);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: border-color 130ms ease;
+}
+
+.setup-recent:hover:not(:disabled) { border-color: var(--accent); }
+
+.setup-recent-name {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 580;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-recent-meta { font-size: 11.5px; color: var(--ink-2); }
+
+.setup-recent-forget {
+  flex: none;
+  width: 34px;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid rgba(22, 32, 43, 0.14);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.setup-recent-forget:hover { color: var(--danger); border-color: var(--danger); }

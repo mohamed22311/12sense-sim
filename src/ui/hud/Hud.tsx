@@ -550,11 +550,14 @@ export function Hud({
 
         {/* Last in the column: it is the end of the demo, and it is
             destructive. Nothing above it should have to scroll past it. */}
-        {adminToken && companyName && joinCode && onEndSession && (
+        {/* Not gated on the join code. A resumed session can legitimately have
+            none — and hiding the only way to clear the tenant because the
+            pairing code is missing would be the wrong thing to lose. */}
+        {adminToken && companyName && onEndSession && (
           <EndSession
             adminToken={adminToken}
             companyName={companyName}
-            joinCode={joinCode}
+            joinCode={joinCode ?? ''}
             onFinished={onEndSession}
           />
         )}

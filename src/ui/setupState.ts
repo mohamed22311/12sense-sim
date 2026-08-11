@@ -33,7 +33,15 @@ export function clampWorkerCount(raw: number): number {
   return Math.min(MAX_WORKER_COUNT, Math.max(MIN_WORKER_COUNT, Math.round(raw)));
 }
 
-export type SetupPhase = 'idle' | 'company' | 'workers' | 'connecting' | 'ready' | 'failed';
+export type SetupPhase =
+  | 'idle'
+  | 'company'
+  | 'workers'
+  /** logging an existing company's accounts back in */
+  | 'signing-in'
+  | 'connecting'
+  | 'ready'
+  | 'failed';
 
 export type SetupProgress = { done: number; total: number };
 
@@ -43,6 +51,8 @@ export function progressLabel(phase: SetupPhase, progress: SetupProgress): strin
       return 'Creating the company';
     case 'workers':
       return `Registering workers ${progress.done} / ${progress.total}`;
+    case 'signing-in':
+      return `Signing workers in ${progress.done} / ${progress.total}`;
     case 'connecting':
       return `Connecting ${progress.total} phones`;
     case 'ready':

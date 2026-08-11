@@ -294,3 +294,89 @@ describe('purgeCompany', () => {
     );
   });
 });
+
+/**
+ * Everyone gets a seat.
+ *
+ * The demo's premise is sixty phones on a site. A run that quietly comes up
+ * with fifty-seven because the server hiccupped three times is not a smaller
+ * demo, it is a wrong one — the floor counts, the reach breakdown and the
+ * analytics all describe a workforce that does not match what the operator
+ * was told they created.
+ */
+describe('provisionWorkers, when the server is imperfect', () => {
+  const ok = (body: Record<string, unknown>) => ({
+    worker: { id: `u-${body.username as string}` },
+    access_token: 'a',
+    refresh_token: 'r',
+  });
+
+  it('signs in to an account that already exists instead of losing that worker', async () => {
+    // The case that used to strand someone permanently: the registration
+    // reached the database and the *response* was lost, so every retry meets
+    // 409 and the index is written off. The account exists and the
+    // credentials are derived, so the answer is to log in to it.
+    const post = vi.fn(async (_p: string, body: Record<string, unknown>) => {
+      if (body.username === 'sim-abc123-w03') throw new ApiError('taken', { status: 409 });
+      return ok(body);
+    });
+    const login = vi.fn(async (username: string) => ({
+      worker: { id: `u-${username}` },
+      access_token: 'adopted',
+      refresh_token: 'r',
+    }));
+
+    const { workers, failures } = await provisionWorkers(
+      session, 5, undefined, post as never, [], login as never,
+    );
+
+    expect(failures).toEqual([]);
+    expect(workers).toHaveLength(5);
+    expect(workers.find((w) => w.index === 3)?.accessToken).toBe('adopted');
+    expect(login).toHaveBeenCalledWith('sim-abc123-w03', expect.any(String));
+  });
+
+  it('retries a 503 rather than writing the worker off', async () => {
+    let hits = 0;
+    const post = vi.fn(async (_p: string, body: Record<string, unknown>) => {
+      if (body.username === 'sim-abc123-w02' && hits++ < 1) {
+        throw new ApiError('db down', { status: 503 });
+      }
+      return ok(body);
+    });
+
+    const { workers, failures } = await provisionWorkers(session, 3, undefined, post as never);
+
+    expect(failures).toEqual([]);
+    expect(workers).toHaveLength(3);
+  });
+
+  it('does not retry a refusal it cannot fix', async () => {
+    // A 422 is the server saying the body is wrong. Asking twice more is
+    // three times the wait for the same answer.
+    const post = vi.fn(async (_p: string, body: Record<string, unknown>) => {
+      if (body.username === 'sim-abc123-w01') throw new ApiError('bad', { status: 422 });
+      return ok(body);
+    });
+
+    const { failures } = await provisionWorkers(session, 2, undefined, post as never);
+
+    expect(failures.map((f) => f.index)).toEqual([1]);
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns workers in index order despite finishing out of order', async () => {
+    // Eight runners finish in whatever order the network allows, but the
+    // fleet, the agents and the roster are all keyed on this index.
+    const post = vi.fn(async (_p: string, body: Record<string, unknown>) => {
+      const n = Number((body.username as string).slice(-2));
+      await new Promise((r) => setTimeout(r, (10 - n) * 2));
+      return ok(body);
+    });
+
+    const { workers } = await provisionWorkers(session, 9, undefined, post as never);
+
+    expect(workers.map((w) => w.index)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+});
+

@@ -75,7 +75,8 @@ export function EndSession({ adminToken, companyName, joinCode, onFinished }: En
         <h2 className="hud-card-title">Session ended</h2>
         <p className="hud-card-note">
           {total} rows removed from {companyName}. Nothing from this run will
-          appear in the next one.
+          appear in the next one. The company and this admin login are still
+          there — resume with them to seed a fresh set of workers.
         </p>
         <ul className="purge-counts">
           {Object.entries(counts)
@@ -97,15 +98,32 @@ export function EndSession({ adminToken, companyName, joinCode, onFinished }: En
   return (
     <section className="hud-card">
       <h2 className="hud-card-title">Session</h2>
-      <p className="hud-card-note">Join code, for a real phone</p>
-      <p className="hud-joincode">{joinCode}</p>
+      {joinCode ? (
+        <>
+          <p className="hud-card-note">Join code, for a real phone</p>
+          <p className="hud-joincode">{joinCode}</p>
+        </>
+      ) : (
+        <p className="hud-card-note">
+          No join code on this session. A real handset cannot pair until one is
+          created.
+        </p>
+      )}
 
       {confirming ? (
         <>
+          {/*
+            Says what the server actually does. `POST /companies/me/purge`
+            deletes the workers, their devices and every operational row, but
+            keeps the company and its admins on purpose — so the next demo
+            signs in with the same credentials and seeds workers back in. An
+            operator who thinks this destroys their login will never press it.
+          */}
           <p className="hud-card-note">
-            This deletes {companyName} and everything it recorded — the sixty
-            accounts, every alert, every response. It cannot be undone, and it
-            is the right thing to do before demonstrating to someone else.
+            This deletes every worker in {companyName} and everything they
+            recorded — each alert, each response. It cannot be undone. The
+            company and this admin login survive, so you can sign back in and
+            seed a fresh set of workers into it.
           </p>
           {error && <p className="dialog-error" role="alert">{error}</p>}
           <div className="worker-actions">

@@ -11,30 +11,46 @@ npm install
 npm run dev
 ```
 
-Open the address it prints. Pick **Factory** or **Construction site**, leave the
-count at 60, press **Start demo**.
+Open the address it prints. There are two ways in.
 
-Wait ~25 s while it registers the company and sixty accounts, then ~10 s more
-for the sockets. The console shows the company name and join code once it is
-running.
+### Log in — use this one
+
+The default tab, and the one to use for a real demo. Click the company under
+**Recent**, or type its admin username, and press **Log in**. Every worker
+signs back in: the same sixty accounts, with everything they have recorded in
+every run before this one. Nothing new is created.
+
+Takes ~20 s for sixty accounts, then ~10 s for the sockets.
+
+### Register — only for a brand-new company
+
+**Register** → pick **Factory** or **Construction site** → leave the count at
+60 → **Start demo**. Roughly 25 s. Use it once; from then on, log in.
+
+Registering again is not free: every company is sixty more accounts on a shared
+server, and it starts the analytics over from zero.
 
 ## Accounts
 
-Created fresh every session. The console shows the current ones; the pattern is
-always the same.
+Every account is derived from one thing — the company's slug — so the admin
+username is all you need to get the whole site back.
 
 | Who | Username | Password |
 |---|---|---|
 | Dispatcher / admin | `sim-<slug>-admin` | `TwelveDemo2026` |
 | Workers 1–60 | `sim-<slug>-w01` … `w60` | `TwelveDemo2026` |
 
-**The session prepared for you:**
+That is 61 accounts per company: sixty workers and one admin.
+
+**The company to demo with:**
 
 | | |
 |---|---|
-| Company | `Demo Factory nbszss` |
-| Admin | `sim-nbszss-admin` / `TwelveDemo2026` |
-| Join code | `DEMOFA-Z9AJW` |
+| Company | `Demo Factory ovdh4q` |
+| Admin | `sim-ovdh4q-admin` / `TwelveDemo2026` |
+| Join code | `DEMOFA-YS2U2` |
+
+Type the admin username on the **Log in** tab and all sixty come back.
 
 Server: `https://tw-edf7c6f5a5ca428b807c34c7ebf9321f.ecs.us-east-1.on.aws`
 

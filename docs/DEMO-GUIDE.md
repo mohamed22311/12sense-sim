@@ -26,26 +26,38 @@ the same numbers.
 
 ## 2. Credentials
 
-The session created for you:
+The company to demo with:
 
 | | |
 |---|---|
-| **Company** | `Demo Factory nbszss` |
-| **Dispatcher / admin login** | `sim-nbszss-admin` |
+| **Company** | `Demo Factory ovdh4q` |
+| **Dispatcher / admin login** | `sim-ovdh4q-admin` |
 | **Password** | `TwelveDemo2026` |
-| **Worker logins** | `sim-nbszss-w01` … `sim-nbszss-w60` |
+| **Worker logins** | `sim-ovdh4q-w01` … `sim-ovdh4q-w60` |
 | **Worker password** | `TwelveDemo2026` (all of them) |
-| **Join code (for a real phone)** | `DEMOFA-Z9AJW` |
+| **Join code (for a real phone)** | `DEMOFA-YS2U2` |
 | **Server** | `https://tw-edf7c6f5a5ca428b807c34c7ebf9321f.ecs.us-east-1.on.aws` |
 
-The password is the same for every account by design — it is a throwaway demo
-tenant that gets purged at the end, and a demo where the presenter has to look
+61 accounts: sixty workers and one admin. The password is the same for every
+one by design — it is a demo tenant, and a demo where the presenter has to look
 up sixty passwords is a demo that stalls.
 
-**If you start a fresh session**, all of these change. The slug (`nbszss`) is
-generated per session, so the pattern holds but the names do not:
-`sim-<slug>-admin`, `sim-<slug>-wNN`. The console shows the company name and
-join code while a session is running.
+### One name gets the whole company back
+
+Every account is derived from the company's slug (`ovdh4q`), so nothing is
+stored anywhere and nothing needs writing down:
+
+- admin — `sim-<slug>-admin`
+- worker *n* — `sim-<slug>-w<nn>`, from `w01` up
+
+That is why the **Log in** tab needs only the admin username: from it the
+simulator derives all sixty worker logins, signs them in, and puts the same
+people back on the site — same account ids, same history, same analytics. Log
+in as often as you like; nothing is created and nothing is lost.
+
+**Register** mints a new slug and therefore a whole new set of names. Do that
+once. Every extra company is sixty more accounts on a shared server and an
+analytics history that starts again at zero.
 
 ---
 
@@ -107,9 +119,12 @@ before promising it.
 ## 4. Running it
 
 1. `cd scene-3d && npm run dev`, then open the address it prints.
-2. Choose **Factory** or **Construction site**, leave the worker count at 60,
-   press **Start demo**. It takes about 25 seconds to register the company and
-   sixty accounts.
+2. On the **Log in** tab, click `Demo Factory ovdh4q` under **Recent** — or
+   type `sim-ovdh4q-admin` if this browser has not run it before. About 20
+   seconds to sign sixty accounts back in.
+
+   Only if you need a brand-new company: **Register** → site → 60 →
+   **Start demo**, about 25 seconds. See §2 for why to avoid this.
 3. Wait about 10 more seconds for every socket to connect before raising
    anything. The **On site** card showing 60 does not mean 60 are connected —
    it counts simulated workers, not sockets. The real proof comes in step 6.

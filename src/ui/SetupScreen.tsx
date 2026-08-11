@@ -19,6 +19,13 @@
  * comment nobody reads.
  */
 import { useCallback, useState } from 'react';
+import { DEMO_PASSWORD, adminUsername as adminNameFor, resumeSession } from '@/net/provisioning';
+import {
+  forgetSession,
+  recentSessions,
+  rememberSession,
+  type RecentSession,
+} from '@/ui/recentSessions';
 import { FACTORY } from '@/sites/factory';
 import { CONSTRUCTION } from '@/sites/construction';
 import { useBuildingStore } from '@/state/buildingStore';
@@ -56,6 +63,24 @@ const SITES: SiteDef[] = [FACTORY, CONSTRUCTION];
 export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => void }) {
   const site = useBuildingStore((s) => s.site);
   const setSite = useBuildingStore((s) => s.setSite);
+  /*
+    Two ways in, and resuming is the default.
+
+    Every run used to mint a fresh tenant: sixty more undeletable accounts, and
+    a fresh set of analytics that threw away everything the last demo had built
+    up. Signing back in to a company that already exists is the normal case, so
+    it is the tab that opens.
+  */
+  const [recent, setRecent] = useState<RecentSession[]>(() => recentSessions());
+  // Resume is the right default only when there is something to resume. On a
+  // browser that has never run the simulator, opening on an empty form asking
+  // for a username the operator does not have yet is a dead end.
+  const [mode, setMode] = useState<'resume' | 'new'>(() =>
+    recentSessions().length > 0 ? 'resume' : 'new',
+  );
+  const [adminUsername, setAdminUsername] = useState('');
+  const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [resuming, setResuming] = useState(false);
   const [phase, setPhase] = useState<SetupPhase>('idle');
   const [progress, setProgress] = useState<SetupProgress>({ done: 0, total: 60 });
   const [workerCount, setWorkerCount] = useState(60);
@@ -103,6 +128,16 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
       }
 
       setPhase('connecting');
+      // Remembered at creation, not only at resume: a company you can no longer
+      // find the admin name for is a company you will re-create, which is the
+      // exact waste the resume tab exists to stop.
+      rememberSession({
+        slug: active.slug,
+        adminUsername: adminNameFor(active.slug),
+        companyName: active.companyName,
+        siteId: site.id,
+        workerCount: allWorkers.length,
+      });
       onReady({ session: active, workers: allWorkers });
       setPhase('ready');
     } catch (e) {
@@ -110,6 +145,68 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
       setPhase((p) => nextPhaseAfterFailure(p));
     }
   }, [session, workers, workerCount, onReady, site]);
+
+  /**
+   * Sign back in to an existing company, workers and all.
+   *
+   * The site comes back off the company's own name, so resuming lands on the
+   * building the accounts were made for rather than whichever tab happened to
+   * be selected.
+   */
+  const resume = useCallback(
+    async (username: string) => {
+      setResuming(true);
+      setError(null);
+      try {
+        setPhase('signing-in');
+        setProgress({ done: 0, total: 0 });
+        const result = await resumeSession(
+          username.trim(),
+          password,
+          undefined,
+          undefined,
+          (done, total) => setProgress({ done, total }),
+        );
+        setSite(result.siteId === 'construction' ? CONSTRUCTION : FACTORY);
+        rememberSession({
+          slug: result.session.slug,
+          adminUsername: username.trim(),
+          companyName: result.session.companyName,
+          siteId: result.siteId,
+          workerCount: result.workers.length,
+        });
+        if (result.workers.length === 0) {
+          /*
+            An empty roster is the *purged* tenant, not a broken one. The purge
+            endpoint deletes workers but deliberately keeps the company row and
+            its admins, "so the next run re-seeds into the same tenant with the
+            same credentials" — so the right answer is to offer that re-seed,
+            not to send the operator off to mint yet another company.
+
+            Handing the session to the create tab is all it takes: `run()`
+            already skips company creation when a session exists, so Start
+            registers workers straight into this one.
+          */
+          setSession(result.session);
+          setWorkers([]);
+          setMode('new');
+          setResuming(false);
+          setPhase('idle');
+          setError(
+            `${result.session.companyName} is empty — it was cleared at the end of ` +
+              'a previous demo. Choose how many workers to seed back into it.',
+          );
+          return;
+        }
+        onReady({ session: result.session, workers: result.workers });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setResuming(false);
+        setPhase('idle');
+      }
+    },
+    [password, onReady, setSite],
+  );
 
   const busy = phase !== 'idle' && phase !== 'ready' && error === null;
   const started = session !== null;
@@ -125,6 +222,110 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
           on the live server.
         </p>
 
+        <div className="setup-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={mode === 'resume'}
+            className={`setup-tab${mode === 'resume' ? ' is-on' : ''}`}
+            onClick={() => { setMode('resume'); setError(null); }}
+            disabled={busy || resuming || started}
+          >
+            Log in
+          </button>
+          <button
+            role="tab"
+            aria-selected={mode === 'new'}
+            className={`setup-tab${mode === 'new' ? ' is-on' : ''}`}
+            onClick={() => { setMode('new'); setError(null); }}
+            disabled={busy || resuming || started}
+          >
+            Register
+          </button>
+        </div>
+
+        {mode === 'resume' ? (
+          <>
+            {recent.length > 0 && (
+              <div className="setup-field">
+                <span className="setup-label">Recent</span>
+                <ul className="setup-recents">
+                  {recent.map((entry) => (
+                    <li key={entry.slug}>
+                      <button
+                        className="setup-recent"
+                        onClick={() => { setAdminUsername(entry.adminUsername); void resume(entry.adminUsername); }}
+                        disabled={resuming}
+                      >
+                        <span className="setup-recent-name">{entry.companyName}</span>
+                        <span className="setup-recent-meta">
+                          {entry.siteId === 'construction' ? 'Construction site' : 'Factory'} ·{' '}
+                          {entry.workerCount} workers
+                        </span>
+                      </button>
+                      <button
+                        className="setup-recent-forget"
+                        onClick={() => { forgetSession(entry.slug); setRecent(recentSessions()); }}
+                        aria-label={`Forget ${entry.companyName}`}
+                        disabled={resuming}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="setup-field">
+              <label className="setup-label" htmlFor="admin-username">
+                Company admin
+              </label>
+              <input
+                id="admin-username"
+                className="setup-input setup-input-wide"
+                placeholder="sim-abc123-admin"
+                autoComplete="username"
+                value={adminUsername}
+                disabled={resuming}
+                onChange={(e) => setAdminUsername(e.target.value)}
+              />
+              <span className="setup-hint">
+                The company you registered earlier. Every worker signs back in
+                from this one name — their history is on the server and stays
+                there.
+              </span>
+            </div>
+
+            <div className="setup-field">
+              <label className="setup-label" htmlFor="admin-password">
+                Password
+              </label>
+              <input
+                id="admin-password"
+                className="setup-input setup-input-wide"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                disabled={resuming}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+
+            <button
+              className="setup-start"
+              disabled={resuming || adminUsername.trim().length === 0}
+              onClick={() => void resume(adminUsername)}
+            >
+              {resuming ? 'Signing everyone in…' : 'Log in'}
+            </button>
+
+            <p className="setup-consequence">
+              Creates nothing. Signs the company&rsquo;s existing accounts back
+              in — the same workers, carrying everything they recorded before.
+            </p>
+          </>
+        ) : (
+        <>
         {/*
           The site is chosen before anything is created, and locked once it is:
           the workers, the navmesh and the machines all belong to one site, and
@@ -186,10 +387,21 @@ export function SetupScreen({ onReady }: { onReady: (result: SetupResult) => voi
           not to discover it from a changelog.
         */}
         <p className="setup-consequence">
-          Creates one company and {workerCount} worker
-          {workerCount === 1 ? '' : 's'} on the live server, for the{' '}
-          {site.label.toLowerCase()}.
+          {started ? (
+            <>
+              Adds {workerCount} worker{workerCount === 1 ? '' : 's'} to{' '}
+              {session?.companyName}. No new company is created.
+            </>
+          ) : (
+            <>
+              Creates one company and {workerCount} worker
+              {workerCount === 1 ? '' : 's'} on the live server, for the{' '}
+              {site.label.toLowerCase()}.
+            </>
+          )}
         </p>
+        </>
+        )}
 
         {phase !== 'idle' && (
           <div className="setup-progress" role="status" aria-live="polite">
