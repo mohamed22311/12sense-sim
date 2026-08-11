@@ -6,6 +6,7 @@ import type { Modality, RiskBand } from '@/api/types';
 import { useBuildingStore } from '@/state/buildingStore';
 import { MachineDialog } from '@/ui/hud/MachineDialog';
 import { SitePositionDialog } from '@/ui/hud/SitePositionDialog';
+import { RealPhoneDialog } from '@/ui/hud/RealPhoneDialog';
 import { focusCameraOn, resetCamera } from '@/scene/cameraFocus';
 import { WorkerPanel, type WorkerSample } from '@/ui/hud/WorkerPanel';
 import { EndSession } from '@/ui/hud/EndSession';
@@ -150,6 +151,7 @@ export function Hud({
   const setAnchorLatLon = useBuildingStore((s) => s.setAnchorLatLon);
   const [locating, setLocating] = useState(false);
   const [positionOpen, setPositionOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const alertRadiusM = useBuildingStore((s) => s.alertRadiusM);
   const setAlertRadiusM = useBuildingStore((s) => s.setAlertRadiusM);
   const [locateError, setLocateError] = useState<string | null>(null);
@@ -592,9 +594,21 @@ export function Hud({
             companyName={companyName}
             joinCode={joinCode ?? ''}
             onFinished={onEndSession}
+            onExplainPhone={() => setPhoneOpen(true)}
           />
         )}
       </aside>
+
+      {phoneOpen && (
+        <RealPhoneDialog
+          joinCode={joinCode}
+          onOpenMap={() => {
+            setPhoneOpen(false);
+            setPositionOpen(true);
+          }}
+          onClose={() => setPhoneOpen(false)}
+        />
+      )}
 
       {positionOpen && (
         <SitePositionDialog

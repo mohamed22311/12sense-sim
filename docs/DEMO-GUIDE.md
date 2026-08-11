@@ -69,7 +69,7 @@ sockets for one identity, both would report position, and the response row for
 that worker would record whichever posted first. It half-works, which is worse
 than not working, because it half-works *in front of a client*.
 
-**Use the join code instead.** Enrol the handset with `DEMOFA-Z9AJW` and it
+**Use the join code instead.** Enrol the handset with `DEMOFA-YS2U2` and it
 becomes worker #61 — a real account in the same company that the simulator does
 not drive. It is then the only client for that identity, and everything it does
 is unambiguous.
@@ -78,10 +78,16 @@ The code has no use limit and no expiry, so it works as many times as you need.
 
 ### What the phone will and will not do
 
-**It will:** receive alerts you raise from the simulation, run its own gate
-against its own GPS and floor, alarm on the channels its own modality logic
-picks, and its ack will show up in the dispatcher against the same event as the
-simulated workers' responses.
+**It will receive every alert, wherever it is.** This is the part people get
+backwards. The server broadcasts each event to every phone in the company — no
+server-side geo filtering — and the app records the delivery *before* it asks
+for a GPS fix. So an enrolled handset always gets the message; position and
+floor only decide whether it **alarms**. A correctly silent phone is not a
+broken socket, and it is worth saying so out loud before someone concludes it is.
+
+**It will:** run its own gate against its own GPS and floor, alarm on the
+channels its own modality logic picks, and its ack will show up in the
+dispatcher against the same event as the simulated workers' responses.
 
 **It will follow the avatar — once you turn that on.** Take control of a
 worker, then press **Pin anchor to driven worker** in the console.
@@ -98,15 +104,32 @@ it.
 Measured: walking the driven worker 7.58 m moved a machine's real-world
 coordinate by 7.58 m. A stationary handset feels exactly that.
 
-**Set the coordinate first.** Press **Use my location** so the site is anchored
-where you and the phone actually are, then take control and pin. You can also
-place the origin by hand with **Move the anchor** and a click on any floor —
-useful when the phone is not beside you.
+**Set the coordinate first, by hand.** Open **Set position on a map** in the
+Site anchor card and place the site where the handset actually is — click the
+map, drag the pin, or type the coordinates. This is the normal case: "use my
+location" only ever answers where *this laptop* is, which is the wrong answer
+whenever the demo is of a plant somewhere else. **Move the anchor** still lets
+you place the origin on a particular spot of a particular floor.
 
-**The floor gate still applies.** The phone reports its own floor, and an alert
-raised on floor 3 is gated to floor 3. If the handset reports a different floor
-— or none — it will not alarm no matter how close it is. Raise the alert from
-a machine on the floor the phone thinks it is on.
+**Widen the radius for a real handset.** Phone GPS is 5–10 m out in the open
+and considerably worse under a roof, so a phone inside a 12 m circle can measure
+itself outside it without moving. 30 m or so is the safe range. The map picker
+draws the circle over real streets, which is the easiest way to see what a
+radius means at your actual site.
+
+**Or just open the checklist.** The Session card has **How to pair a real
+phone**: it reads the live session, tells you which of these is currently wrong,
+and fixes what it can in one click.
+
+**The floor gate still applies — and it is the half that works indoors.** The
+phone reports its own floor from Settings → My floor, and an alert raised on
+floor 3 is gated to floor 3. The app offers B1 / Ground / 1 / 2 / 3 as one-tap
+chips and a text box for anything else, so floors 4–6 have to be typed. If the
+handset reports a different floor it will not alarm however close it is.
+
+Unlike distance, this needs no satellites: it is a value the worker sets. In a
+basement, where GPS gives you nothing, the floor gate is still a true
+demonstration.
 
 **Push notification to a locked phone is unverified.** The server supports FCM,
 but I have not confirmed it is configured on this deployment, and the simulated
@@ -136,9 +159,17 @@ before promising it.
 This sequence builds an argument rather than listing features.
 
 **a. The site is alive.** Six floors, sixty people working — operating
-machines, at terminals, carrying stock, inspecting, sweeping, on breaks, moving
-between floors on the stairs and the lift. Click a floor in the right-hand rail
-to bring it forward. Drag to orbit; scroll to zoom.
+machines, at terminals, carrying stock, inspecting, sweeping, on breaks. Click a
+floor in the right-hand rail to bring it forward.
+
+Nobody uses the stairs, and that is deliberate: a worker in transit reports the
+floor they *left* until they arrive, so a crowd that keeps changing level makes
+the floor gate impossible to check by looking. Every worker stays on one floor.
+
+**b′. Walk into it.** Drag to orbit, right-drag or shift-drag to pan, and scroll
+all the way in — the camera goes inside a floor and can turn around. **Esc**
+restores the whole building. To reach one thing directly: **Go to it** in a
+machine's dialog, **Go to them** in a worker's panel, or double-click a worker.
 
 **b. One worker is a whole phone.** Click any worker. The panel shows what they
 are doing, their live heart rate and SpO₂, and their watch. Point out that this
@@ -147,7 +178,14 @@ is not a readout the server sent — it is what *that phone* decided, on its own
 **c. Raise a real alert.** Click a machine and press **Raise alert**. The dialog
 offers only alerts that machine could actually raise: a press offers "light
 curtain broken during stroke", a chiller offers "refrigerant pressure high".
-The result screen reports what the server did.
+
+Before you press it, move the **alert radius** slider. A red zone is drawn on
+that machine's floor and grows with the number, and the dialog counts who it
+would reach — *"8 would be alerted · 2 on this floor, outside the circle · 50 on
+other floors · nearest who would not hear it: 2.1 m away."* That count runs
+through the same decision code the phones run, so it is a prediction you can
+hold the result against. Raising is irreversible on a live server; this is the
+moment to look before you do it.
 
 **d. The line that lands.** The **Alert reach** panel appears the moment you
 raise one, and it is the demo's whole argument in three numbers: how many
@@ -165,8 +203,18 @@ its own floor and position. This is the whole product in one sentence, and it
 is the moment to open the dispatcher and show the same numbers from the other
 side.
 
-**e. Acknowledge.** Click a worker whose watch is alarming and press
-**Acknowledge**. The dispatcher shows the event resolve and records the latency.
+**e. Look at the watch, then acknowledge.** Click a worker whose watch is
+alarming and press **Look at their watch**. The camera flies to their wrist and
+you are looking down at the watch on it, showing the app's own alert surface —
+the same eyebrow, the same pulse, the same three answers. Press **Acknowledge**
+there.
+
+Two things happen that are worth pointing at. The alarm clears **everywhere at
+once** — the server resolves an event on the first acknowledgement and every
+other phone drops it on its own. And the worker who answered **walks to the
+machine and starts working on it**: acknowledging means "I have this", and the
+simulation now says so. The dispatcher shows the event resolve and records the
+latency.
 
 **f. Health, not proximity.** Click a worker who is *not* alarming. Drag heart
 rate up to ~150 and press **Send to the watch**. This rewrites the last twenty
@@ -242,14 +290,24 @@ These are things I would not want you to discover in front of a client.
 
 - **The floor gate is not simulated for a real phone.** Everything else about
   a handset's position can be driven from here; its *floor* cannot, because the
-  app reads that from the phone itself. Raise alerts from machines on the floor
-  the phone reports.
-- **One site per session.** Choosing Factory or Construction site registers a
-  company for that site. To demo the other one, end the session and start
-  again — which also means a new company and new credentials.
-- **The camera cannot go behind the building.** Deliberate. It is a cutaway:
-  from behind you would see five dimmed walls and no interior. The orbit stops
-  at about 72° either side of the open face.
+  app reads that from the phone itself. Set it in Settings → My floor and raise
+  from a machine on that floor.
+- **The reach preview cannot see a real handset.** The count shown while you
+  choose a radius asks the *simulation* where everyone is, so an enrolled phone
+  — which the simulator does not track — is not in it. The count is right about
+  the sixty it knows and silent about the one it does not.
+- **One site per company.** A company is registered for a Factory or a
+  Construction site and stays that way — logging in reads the site back off the
+  company's name. To demo the other one, register a second company; you can keep
+  both and log in to whichever you want.
+- **The camera cannot orbit behind the building — while it is outside.** It is
+  a cutaway: from behind you would see five dimmed walls and no interior, so
+  the orbit stops about 72° either side of the open face. Fly inside a floor and
+  the clamp lifts, because there is no back to get lost behind any more.
+- **Double-clicking a machine does nothing.** The first click opens its dialog,
+  whose overlay then covers the canvas, so the second never reaches the machine.
+  Use **Go to it** in the dialog. Double-click works on workers, which have no
+  dialog to get in the way.
 - **Visual quality drops itself on slower machines.** The renderer measures the
   first second and picks a tier. On a slow laptop the glow and the finer worker
   detail switch off automatically. It will still run; it will look plainer.
@@ -261,6 +319,19 @@ These are things I would not want you to discover in front of a client.
 ### Fixed since the first draft of this guide
 
 Recorded because they appear in older notes:
+
+- Alerts used to reach the wrong people. Two causes, both fixed: workers moved
+  between floors, so a worker on a staircase reported the floor they had left;
+  and the radius opened at 75 m on a 16 m x 16 m floor, which put every worker
+  on every floor inside it. Workers are pinned to one floor now and the default
+  is 12 m.
+- The camera used to be locked to the dollhouse. It can go inside a floor now.
+- A company used to get a random six-character id nobody could name or find.
+  You type the id, the name and the password, and the screen resolves them to
+  the sixty-one usernames before creating anything.
+- Every run used to mint a fresh tenant. Log in instead: the admin username
+  derives all sixty worker logins, so the same accounts come back with all their
+  history.
 
 - The avatar used to have no effect on a real phone. It does now — see §3.
 - The alarm list used to clear by hand. It now polls the server every four
@@ -292,10 +363,15 @@ Recorded because they appear in older notes:
 
 ## 8. Before demoing to someone else
 
-Press **End and clear the data**. It deletes the company and everything it
+Press **End and clear the data**. It deletes every worker and everything they
 recorded, and reports the row counts it removed.
 
 This matters more than it sounds: without it, the second demo's analytics
 include the first demo's events, acknowledgement rates and latencies. That is
 the one way this tool can actively mislead someone, and it takes one click to
 avoid.
+
+**It does not delete the company or your admin login.** The server keeps both on
+purpose, so the next demo signs in with the same credentials and seeds a fresh
+set of workers into the same tenant. Logging in to an emptied company offers to
+do exactly that.

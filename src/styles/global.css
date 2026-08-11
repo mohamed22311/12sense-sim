@@ -2102,3 +2102,67 @@ select.field-input {
 }
 
 .hud-hint-btn:hover { background: rgba(255, 255, 255, 0.85); }
+
+/* ─── The real-phone checklist ───────────────────────────────────────
+   A step that is already satisfied says so and gets out of the way;
+   one that still needs a decision keeps its control.                  */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  padding: 12px 14px;
+  border: 1px solid rgba(22, 32, 43, 0.14);
+  border-left-width: 3px;
+  border-radius: 10px;
+}
+
+.step.is-done { border-left-color: var(--ok, #2f9e5f); background: rgba(47, 158, 95, 0.05); }
+.step.is-todo { border-left-color: #e5a020; background: rgba(229, 160, 32, 0.06); }
+.step.is-blocked { border-left-color: #d93a34; background: rgba(217, 58, 52, 0.06); }
+
+.step-title {
+  font-size: 13.5px;
+  font-weight: 620;
+}
+
+.step-value {
+  margin-top: 5px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-value.mono {
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+}
+
+.step-source {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.step-note {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.step-note code {
+  padding: 1px 4px;
+  font-family: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+  font-size: 11.5px;
+  background: var(--surface-sunk);
+  border-radius: 4px;
+}
+
+.step .btn { margin-top: 9px; }

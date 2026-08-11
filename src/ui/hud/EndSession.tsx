@@ -41,9 +41,17 @@ export type EndSessionProps = {
   joinCode: string;
   /** called once the tenant is empty, to return to the setup screen */
   onFinished(): void;
+  /** opens the walkthrough for pairing a real handset */
+  onExplainPhone(): void;
 };
 
-export function EndSession({ adminToken, companyName, joinCode, onFinished }: EndSessionProps) {
+export function EndSession({
+  adminToken,
+  companyName,
+  joinCode,
+  onFinished,
+  onExplainPhone,
+}: EndSessionProps) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +145,14 @@ export function EndSession({ adminToken, companyName, joinCode, onFinished }: En
         </>
       ) : (
         <>
+          {/*
+            The code alone was never enough. Pairing a handset also needs the
+            site put where the phone is and a radius wide enough for GPS error,
+            and nothing here said those were three parts of one job.
+          */}
+          <button className="btn" onClick={onExplainPhone}>
+            How to pair a real phone
+          </button>
           <p className="hud-card-note">{companyName}</p>
           <button className="btn" onClick={() => setConfirming(true)}>
             End and clear the data
