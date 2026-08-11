@@ -6,7 +6,6 @@ import {
   ALERT_RADIUS_MAX_M,
   ALERT_RADIUS_MIN_M,
   ALERT_TYPES,
-  DEFAULT_ALERT_RADIUS_M,
   raiseAlert,
   type RaiseAlertResult,
   type Severity,
@@ -46,7 +45,13 @@ export function MachineDialog({ machine, agents, adminToken, onClose, onRaised }
   const [presetIndex, setPresetIndex] = useState(0);
   const [severity, setSeverity] = useState<Severity>(presets[0].severity);
   const [message, setMessage] = useState(presets[0].message);
-  const [radius, setRadius] = useState(DEFAULT_ALERT_RADIUS_M);
+  /*
+    Read from the store, not local state. The map picker sets a radius against
+    real streets, and an operator who has just drawn a 30 m circle means that
+    to be the radius — not a number the next dialog forgets.
+  */
+  const radius = useBuildingStore((s) => s.alertRadiusM);
+  const setRadius = useBuildingStore((s) => s.setAlertRadiusM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RaiseAlertResult | null>(null);

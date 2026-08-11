@@ -5,6 +5,7 @@ import { fetchEventStatus, isEventOpen, type RaiseAlertResult } from '@/net/aler
 import type { Modality, RiskBand } from '@/api/types';
 import { useBuildingStore } from '@/state/buildingStore';
 import { MachineDialog } from '@/ui/hud/MachineDialog';
+import { SitePositionDialog } from '@/ui/hud/SitePositionDialog';
 import { WorkerPanel, type WorkerSample } from '@/ui/hud/WorkerPanel';
 import { EndSession } from '@/ui/hud/EndSession';
 import { ReachPanel, type ReachBreakdown } from '@/ui/hud/ReachPanel';
@@ -147,6 +148,9 @@ export function Hud({
   const anchorSource = useBuildingStore((s) => s.anchorSource);
   const setAnchorLatLon = useBuildingStore((s) => s.setAnchorLatLon);
   const [locating, setLocating] = useState(false);
+  const [positionOpen, setPositionOpen] = useState(false);
+  const alertRadiusM = useBuildingStore((s) => s.alertRadiusM);
+  const setAlertRadiusM = useBuildingStore((s) => s.setAlertRadiusM);
   const [locateError, setLocateError] = useState<string | null>(null);
 
   /**
@@ -545,9 +549,22 @@ export function Hud({
           <p className="hud-anchor-geo">
             {anchorLatLon.latitude.toFixed(5)}, {anchorLatLon.longitude.toFixed(5)}
             <span className="hud-anchor-source">
-              {anchorSource === 'device' ? 'from this device' : 'default'}
+              {anchorSource === 'device'
+                ? 'from this device'
+                : anchorSource === 'manual'
+                  ? 'set by hand'
+                  : 'default'}
             </span>
           </p>
+          {/*
+            Setting it by hand comes first. "Use my location" only ever answers
+            where *this laptop* is, which is the wrong answer whenever the demo
+            is of a plant somewhere else — and it is the only answer the
+            operator had.
+          */}
+          <button className="btn btn-primary" onClick={() => setPositionOpen(true)}>
+            Set position on a map
+          </button>
           <button className="btn" onClick={useMyLocation} disabled={locating}>
             {locating ? 'Locating…' : 'Use my location'}
           </button>
@@ -568,6 +585,22 @@ export function Hud({
           />
         )}
       </aside>
+
+      {positionOpen && (
+        <SitePositionDialog
+          zone={{
+            lat: anchorLatLon.latitude,
+            lon: anchorLatLon.longitude,
+            radiusM: alertRadiusM,
+          }}
+          onApply={(zone) => {
+            setAnchorLatLon({ latitude: zone.lat, longitude: zone.lon }, 'manual');
+            setAlertRadiusM(zone.radiusM);
+            setPositionOpen(false);
+          }}
+          onClose={() => setPositionOpen(false)}
+        />
+      )}
 
       <nav className="hud-panel hud-right floor-rail" aria-label="Floors">
         {[...site.floors].reverse().map((floor) => {

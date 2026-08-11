@@ -10,6 +10,7 @@ import type { SiteDef } from '@/sites/types';
 import { FACTORY } from '@/sites/factory';
 import { SITE_ANCHOR } from '@/sites/anchor';
 import type { LatLon } from '@/runtime/geo';
+import { DEFAULT_ALERT_RADIUS_M } from '@/net/alerts';
 
 export type QualityTier = 'high' | 'medium' | 'low';
 
@@ -74,7 +75,14 @@ type BuildingState = {
    */
   anchorLatLon: LatLon;
   /** How that coordinate was obtained, so the interface can say so. */
-  anchorSource: 'default' | 'device';
+  /**
+   * Where the anchor's coordinate came from.
+   *
+   * `manual` is the operator placing it on a map, which is the normal case:
+   * "use my location" only ever answers where *this laptop* is, and the demo
+   * is usually of a site somewhere else entirely.
+   */
+  anchorSource: 'default' | 'device' | 'manual';
   /** True while the operator is choosing where the anchor goes. */
   placingAnchor: boolean;
   /**
@@ -120,6 +128,17 @@ type BuildingState = {
    * is real and irreversible.
    */
   radiusPreview: { floorId: string; x: number; z: number; radiusM: number } | null;
+
+  /**
+   * The radius a new alert opens on, in metres.
+   *
+   * In the store rather than local to the machine dialog because the map
+   * picker sets it too — an operator who has just drawn a 30 m circle over
+   * real streets means that to be the radius, not a number the next dialog
+   * forgets.
+   */
+  alertRadiusM: number;
+  setAlertRadiusM(radiusM: number): void;
   setSite(site: SiteDef): void;
   setActiveFloor(floorId: string): void;
   stepFloor(delta: number): void;
@@ -131,7 +150,7 @@ type BuildingState = {
   setAnchorPoint(point: { floorId: string; x: number; z: number }): void;
   setPlacingAnchor(placing: boolean): void;
   setAnchorFollowsControlled(following: boolean): void;
-  setAnchorLatLon(at: LatLon, source: 'default' | 'device'): void;
+  setAnchorLatLon(at: LatLon, source: BuildingState['anchorSource']): void;
   reset(): void;
 };
 
@@ -145,11 +164,12 @@ const INITIAL = {
   openAlerts: [] as readonly { assetId: string; eventId: string }[],
   anchorPoint: { floorId: FACTORY.floors[0].id, x: 0, z: 0 },
   anchorLatLon: SITE_ANCHOR,
-  anchorSource: 'default' as 'default' | 'device',
+  anchorSource: 'default' as 'default' | 'device' | 'manual',
   placingAnchor: false,
   anchorFollowsControlled: false,
   radiusPreview: null as BuildingState['radiusPreview'],
   closeUpIndex: null as number | null,
+  alertRadiusM: DEFAULT_ALERT_RADIUS_M,
 };
 
 export const useBuildingStore = create<BuildingState>((set, get) => ({
@@ -192,6 +212,10 @@ export const useBuildingStore = create<BuildingState>((set, get) => ({
 
   setRadiusPreview(radiusPreview) {
     set({ radiusPreview });
+  },
+
+  setAlertRadiusM(alertRadiusM) {
+    set({ alertRadiusM });
   },
 
   setCloseUp(closeUpIndex) {
